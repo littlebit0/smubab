@@ -58,12 +58,13 @@ async def startup_event():
     """서버 시작 시 실행"""
     logger.info("Starting SMU-Bab API server...")
     
-    # 초기 데이터 로드
-    update_menus()
-    
     # 매일 오전 6시에 메뉴 업데이트
     scheduler.add_job(update_menus, 'cron', hour=6, minute=0)
     scheduler.start()
+    
+    # 초기 데이터는 백그라운드에서 로드 (서버 시작 차단 방지)
+    from threading import Thread
+    Thread(target=update_menus, daemon=True).start()
     
     logger.info("Server started successfully")
 
