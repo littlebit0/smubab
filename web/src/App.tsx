@@ -1,0 +1,209 @@
+import { format } from 'date-fns'
+import { ko } from 'date-fns/locale'
+import { useEffect, useState } from 'react'
+import { Menu, menuAPI } from './api'
+import './App.css'
+
+const MEAL_TYPE_NAMES: { [key: string]: string } = {
+  breakfast: '아침',
+  lunch: '점심',
+  dinner: '저녁',
+}
+
+function App() {
+  const [view, setView] = useState<'today' | 'week' | 'month'>('today')
+  const [loading, setLoading] = useState(true)
+  const [menus, setMenus] = useState<Menu[]>([])
+  const [date, setDate] = useState(new Date())
+
+  useEffect(() => {
+    loadMenus()
+  }, [view])
+
+  const loadMenus = async () => {
+    try {
+      setLoading(true)
+      if (view === 'today') {
+        const response = await menuAPI.getTodayMenus()
+        setMenus(response.menus)
+      } else if (view === 'week') {
+        const response = await menuAPI.getWeeklyMenus()
+        setMenus(response.data)
+      } else if (view === 'month') {
+        const response = await menuAPI.getMonthlyMenus(date.getFullYear(), date.getMonth() + 1)
+        setMenus(response.data)
+      }
+    } catch (error) {
+      console.error('Failed to load menus:', error)
+      alert('메뉴를 불러오는데 실패했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const groupMenusByDate = () => {
+    const grouped: { [key: string]: Menu[] } = {}
+    menus.forEach(menu => {
+      if (!grouped[menu.date]) {
+        grouped[menu.date] = []
+      }
+      grouped[menu.date].push(menu)
+    })
+    return grouped
+  }
+
+  const renderMenuItem = (item: any, index: number) => (
+    <div key={index} className="menu-item">
+      <span className="item-name">{item.name}</span>
+      {item.price && <span className="item-price">{item.price.toLocaleString()}원</span>}
+    </div>
+  )
+
+  const renderMenu = (menu: Menu, index: number) => (
+    <div key={index} className="menu-card">
+      <div className="menu-header">
+        <span className="restaurant-name">{menu.restaurant}</span>
+        <span className="meal-type">{MEAL_TYPE_NAMES[menu.meal_type] || menu.meal_type}</span>
+      </div>
+      <div className="menu-items">
+        {menu.items.map((item, idx) => renderMenuItem(item, idx))}
+      </div>
+    </div>
+  )
+
+  const renderTodayView = () => (
+    <div className="content">
+      <div className="page-header">
+        <h2>{format(date, 'yyyy년 MM월 dd일 (E)', { locale: ko })}</h2>
+        <p className="subtitle">{menus.length}개의 메뉴</p>
+      </div>
+      <div className="menus-container">
+        {menus.length > 0 ? (
+          menus.map((menu, index) => renderMenu(menu, index))
+        ) : (
+          <div className="empty-state">
+            <p>오늘의 메뉴가 없습니다</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  const renderWeekView = () => {
+    const grouped = groupMenusByDate()
+    const dates = Object.keys(grouped).sort()
+
+    return (
+      <div className="content">
+        <div className="page-header">
+          <h2>이번 주 메뉴</h2>
+          <p className="subtitle">{dates.length}일 메뉴</p>
+        </div>
+        <div className="week-container">
+          {dates.map(dateStr => {
+            const dayMenus = grouped[dateStr]
+            const dateObj = new Date(dateStr)
+            const isToday = format(dateObj, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
+
+            return (
+              <div key={dateStr} className={`day-card ${isToday ? 'today' : ''}`}>
+                <div className="day-header">
+                  <h3>{format(dateObj, 'M/d (E)', { locale: ko })}</h3>
+                  {isToday && <span className="today-badge">오늘</span>}
+                </div>
+                <div className="day-menus">
+                  {dayMenus.map((menu, index) => renderMenu(menu, index))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  const renderMonthView = () => {
+    const grouped = groupMenusByDate()
+    const dates = Object.keys(grouped).sort()
+
+    return (
+      <div className="content">
+        <div className="page-header">
+          <h2>{format(date, 'yyyy년 MM월', { locale: ko })} 메뉴</h2>
+          <p className="subtitle">{dates.length}일 메뉴 / 총 {menus.length}개</p>
+        </div>
+        <div className="month-container">
+          {dates.map(dateStr => {
+            const dayMenus = grouped[dateStr]
+            const dateObj = new Date(dateStr)
+            const isToday = format(dateObj, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
+
+            return (
+              <div key={dateStr} className={`day-card ${isToday ? 'today' : ''}`}>
+                <div className="day-header">
+                  <h3>{format(dateObj, 'M/d (E)', { locale: ko })}</h3>
+                  {isToday && <span className="today-badge">오늘</span>}
+                </div>
+                <div className="day-menus">
+                  {dayMenus.map((menu, index) => renderMenu(menu, index))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="app">
+      <header className="app-header">
+        <h1>🍚 SMU-Bab</h1>
+        <p>상명대학교 학식</p>
+      </header>
+
+      <nav className="tab-nav">
+        <button
+          className={`tab ${view === 'today' ? 'active' : ''}`}
+          onClick={() => setView('today')}
+        >
+          📅 오늘
+        </button>
+        <button
+          className={`tab ${view === 'week' ? 'active' : ''}`}
+          onClick={() => setView('week')}
+        >
+          📆 주간
+        </button>
+        <button
+          className={`tab ${view === 'month' ? 'active' : ''}`}
+          onClick={() => setView('month')}
+        >
+          📆 월간
+        </button>
+      </nav>
+
+      {loading ? (
+        <div className="loading">
+          <div className="spinner"></div>
+          <p>메뉴를 불러오는 중...</p>
+        </div>
+      ) : (
+        <>
+          {view === 'today' && renderTodayView()}
+          {view === 'week' && renderWeekView()}
+          {view === 'month' && renderMonthView()}
+        </>
+      )}
+
+      <footer className="app-footer">
+        <button className="refresh-btn" onClick={loadMenus}>
+          🔄 새로고침
+        </button>
+        <p>© 2026 SMU-Bab</p>
+      </footer>
+    </div>
+  )
+}
+
+export default App

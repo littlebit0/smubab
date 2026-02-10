@@ -1,1 +1,69 @@
-# smubab
+# SMU-Bab (상명대학교 학식 앱)
+
+상명대학교의 식당 메뉴를 확인할 수 있는 모바일 애플리케이션입니다.
+
+## 주요 기능
+
+- 📅 오늘/이번주 메뉴 보기
+- 🍽️ 식당별 메뉴 구분
+- 💰 가격 정보 제공
+- 🔔 알림 기능
+
+## 프로젝트 구조
+
+```
+smubab/
+├── backend/          # FastAPI 백엔드 서버 (크롤링 + API)
+├── mobile/           # React Native 모바일 앱
+├── web/              # React 웹 애플리케이션
+└── README.md
+```
+
+## 기술 스택
+
+### 백엔드
+- Python 3.11+
+- FastAPI
+- BeautifulSoup4 / Selenium (웹 크롤링)
+- SQLite / PostgreSQL
+
+### 모바일
+- React Native
+- TypeScript
+- React Navigation
+- Axios
+
+### 웹
+- React 18
+- TypeScript
+- Vite
+- Axios
+
+## 시작하기
+
+### 백엔드 실행
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
+
+### 모바일 앱 실행
+```bash
+cd mobile
+npm install
+npm start
+```
+
+### 웹 앱 실행
+```bash
+cd web
+npm install
+npm run dev
+```
+
+웹 앱: http://localhost:3000
+
+## 개발 상태
+
+🚧 개발 중...
