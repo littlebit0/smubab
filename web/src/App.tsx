@@ -25,14 +25,24 @@ function App() {
     try {
       setLoading(true)
       if (view === 'today') {
+        console.log('Fetching today menus...')
         const response = await menuAPI.getTodayMenus()
+        console.log('Response received:', response)
         setMenus(response.menus || [])
       } else if (view === 'week') {
+        console.log('Fetching weekly menus...')
         const response = await menuAPI.getWeeklyMenus()
+        console.log('Response received:', response)
         setMenus(response.data || [])
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load menus:', error)
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url
+      })
       setMenus([])
     } finally {
       setLoading(false)
