@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #result {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+
+        .menu-card {
+            margin: 10px 0;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background: white;
+        }
+
+        .restaurant {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .meal-type {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .item {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🍚 SMU-Bab API 테스트</h1>
+
+    <div>
+        <button onclick="testTodayMenu()">오늘 메뉴 테스트</button>
+        <button onclick="testWeekMenu()">주간 메뉴 테스트</button>
+        <button onclick="testHealth()">헬스 체크</button>
+    </div>
+
+    <div id="result"></div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+
+        async function testHealth() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>⏳ 헬스 체크 중...</p>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/health`);
+                const data = await response.json();
+                resultDiv.innerHTML = `
+                    <h3>✅ 헬스 체크 성공</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h3>❌ 오류 발생</h3>
+                    <p>${error.message}</p>
+                `;
+            }
+        }
+
+        async function testTodayMenu() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>⏳ 오늘 메뉴 로딩 중...</p>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/menus/today`);
+                const data = await response.json();
+
+                console.log('📥 응답 데이터:', data);
+
+                let html = `
+                    <h3>✅ 오늘 메뉴 (${data.date})</h3>
+                    <p>총 ${data.menus.length}개 메뉴</p>
+                `;
+
+                data.menus.forEach(menu => {
+                    html += `
+                        <div class="menu-card">
+                            <div>
+                                <span class="restaurant">${menu.restaurant}</span>
+                                <span class="meal-type"> - ${menu.meal_type}</span>
+                            </div>
+                            <div class="items">
+                                ${menu.items.map(item => `
+                                    <div class="item">• ${item.name}${item.price ? ' (' + item.price + '원)' : ''}</div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                resultDiv.innerHTML = html;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h3>❌ 오류 발생</h3>
+                    <p>${error.message}</p>
+                    <p>콘솔을 확인하세요 (F12)</p>
+                `;
+                console.error('Error:', error);
+            }
+        }
+
+        async function testWeekMenu() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>⏳ 주간 메뉴 로딩 중...</p>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/menus/week`);
+                const data = await response.json();
+
+                console.log('📥 응답 데이터:', data);
+
+                // 날짜별로 그룹화
+                const grouped = {};
+                data.data.forEach(menu => {
+                    if (!grouped[menu.date]) {
+                        grouped[menu.date] = [];
+                    }
+                    grouped[menu.date].push(menu);
+                });
+
+                let html = `
+                    <h3>✅ 주간 메뉴</h3>
+                    <p>${data.message}</p>
+                `;
+
+                Object.keys(grouped).sort().forEach(date => {
+                    html += `<h4>${date}</h4>`;
+                    grouped[date].forEach(menu => {
+                        html += `
+                            <div class="menu-card">
+                                <div>
+                                    <span class="restaurant">${menu.restaurant}</span>
+                                    <span class="meal-type"> - ${menu.meal_type}</span>
+                                </div>
+                                <div class="items">
+                                    ${menu.items.map(item => `
+                                        <div class="item">• ${item.name}${item.price ? ' (' + item.price + '원)' : ''}</div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    });
+                });
+
+                resultDiv.innerHTML = html;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h3>❌ 오류 발생</h3>
+                    <p>${error.message}</p>
+                    <p>콘솔을 확인하세요 (F12)</p>
+                `;
+                console.error('Error:', error);
+            }
+        }
+
+        // 페이지 로드 시 자동 테스트
+        window.onload = () => {
+            console.log('🚀 페이지 로드됨');
+            testTodayMenu();
+        };
+    </script>
+</body>
+
+</html>

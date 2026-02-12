@@ -78,6 +78,39 @@
   font-size: 0.9rem;
 }
 
+.restaurant-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.restaurant-tab {
+  padding: 0.75rem 1.5rem;
+  border: 2px solid #e0e0e0;
+  background: white;
+  color: #666;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border-radius: 20px;
+  transition: all 0.2s;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.restaurant-tab:hover {
+  border-color: #007AFF;
+  color: #007AFF;
+}
+
+.restaurant-tab.active {
+  background: #007AFF;
+  color: white;
+  border-color: #007AFF;
+}
+
 .loading {
   display: flex;
   flex-direction: column;

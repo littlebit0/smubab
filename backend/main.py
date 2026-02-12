@@ -137,24 +137,29 @@ async def get_menus_by_date(target_date: date):
 
 @app.get("/api/menus/week", response_model=MenuResponse)
 async def get_weekly_menus(
-    start_date: Optional[date] = Query(None, description="시작 날짜 (기본값: 오늘)")
+    target_date: Optional[date] = Query(None, description="기준 날짜 (기본값: 오늘, 해당 주의 월~금 반환)")
 ):
-    """주간 메뉴를 조회합니다."""
-    if start_date is None:
-        start_date = date.today()
+    """주간 메뉴를 조회합니다 (해당 주의 월~금)."""
+    if target_date is None:
+        target_date = date.today()
     
-    end_date = start_date + timedelta(days=6)
-    menus = db.get_weekly_menus(start_date, end_date)
+    # 해당 날짜가 속한 주의 월요일과 금요일 계산
+    weekday = target_date.weekday()
+    monday = target_date - timedelta(days=weekday)
+    friday = monday + timedelta(days=4)
+    
+    # 데이터베이스에서 조회
+    menus = db.get_weekly_menus(monday, friday)
     
     if not menus:
         # 데이터가 없으면 크롤링
-        menus = crawler.crawl_weekly_menu(start_date)
+        menus = crawler.crawl_weekly_menu(target_date)
         db.save_menus(menus)
     
     return MenuResponse(
         success=True,
         data=menus,
-        message=f"{start_date} ~ {end_date} 메뉴 {len(menus)}개"
+        message=f"{monday} ~ {friday} 메뉴 {len(menus)}개"
     )
 
 
@@ -196,38 +201,6 @@ async def get_restaurants():
             for r in Restaurant
         ]
     }
-
-
-@app.get("/api/menus/month", response_model=MenuResponse)
-async def get_monthly_menus(
-    year: Optional[int] = Query(None, description="연도 (기본값: 올해)"),
-    month: Optional[int] = Query(None, description="월 (기본값: 이번달)")
-):
-    """월간 메뉴를 조회합니다."""
-    if year is None or month is None:
-        today = date.today()
-        year = year or today.year
-        month = month or today.month
-    
-    # 데이터베이스에서 해당 월의 메뉴 조회
-    import calendar
-    _, last_day = calendar.monthrange(year, month)
-    start_date = date(year, month, 1)
-    end_date = date(year, month, last_day)
-    
-    menus = db.get_weekly_menus(start_date, end_date)
-    
-    if not menus:
-        # 데이터가 없으면 크롤링
-        menus = crawler.crawl_monthly_menu(year, month)
-        if menus:
-            db.save_menus(menus)
-    
-    return MenuResponse(
-        success=True,
-        data=menus,
-        message=f"{year}년 {month}월 메뉴 {len(menus)}개"
-    )
 
 
 @app.post("/api/menus/refresh")

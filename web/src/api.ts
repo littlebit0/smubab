@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = '';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -45,19 +45,10 @@ export const menuAPI = {
     return response.data;
   },
 
-  getWeeklyMenus: async (startDate?: string): Promise<MenuResponse> => {
-    const url = startDate 
-      ? `/api/menus/week?start_date=${startDate}`
+  getWeeklyMenus: async (targetDate?: string): Promise<MenuResponse> => {
+    const url = targetDate 
+      ? `/api/menus/week?target_date=${targetDate}`
       : '/api/menus/week';
-    const response = await api.get<MenuResponse>(url);
-    return response.data;
-  },
-
-  getMonthlyMenus: async (year?: number, month?: number): Promise<MenuResponse> => {
-    let url = '/api/menus/month';
-    if (year && month) {
-      url += `?year=${year}&month=${month}`;
-    }
     const response = await api.get<MenuResponse>(url);
     return response.data;
   },

@@ -11,10 +11,11 @@ const MEAL_TYPE_NAMES: { [key: string]: string } = {
 }
 
 function App() {
-  const [view, setView] = useState<'today' | 'week' | 'month'>('today')
+  const [view, setView] = useState<'today' | 'week'>('today')
   const [loading, setLoading] = useState(true)
   const [menus, setMenus] = useState<Menu[]>([])
   const [date, setDate] = useState(new Date())
+  const [selectedRestaurant, setSelectedRestaurant] = useState<string>('서울_학생식당')
 
   useEffect(() => {
     loadMenus()
@@ -23,18 +24,21 @@ function App() {
   const loadMenus = async () => {
     try {
       setLoading(true)
+      console.log('🔄 메뉴 로딩 시작:', view)
       if (view === 'today') {
         const response = await menuAPI.getTodayMenus()
+        console.log('📥 오늘 메뉴 응답:', response)
+        console.log('📋 메뉴 개수:', response.menus?.length)
         setMenus(response.menus)
       } else if (view === 'week') {
         const response = await menuAPI.getWeeklyMenus()
-        setMenus(response.data)
-      } else if (view === 'month') {
-        const response = await menuAPI.getMonthlyMenus(date.getFullYear(), date.getMonth() + 1)
+        console.log('📥 주간 메뉴 응답:', response)
+        console.log('📋 메뉴 개수:', response.data?.length)
         setMenus(response.data)
       }
+      console.log('✅ 메뉴 로딩 완료')
     } catch (error) {
-      console.error('Failed to load menus:', error)
+      console.error('❌ Failed to load menus:', error)
       alert('메뉴를 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
@@ -71,37 +75,76 @@ function App() {
     </div>
   )
 
-  const renderTodayView = () => (
-    <div className="content">
-      <div className="page-header">
-        <h2>{format(date, 'yyyy년 MM월 dd일 (E)', { locale: ko })}</h2>
-        <p className="subtitle">{menus.length}개의 메뉴</p>
-      </div>
-      <div className="menus-container">
-        {menus.length > 0 ? (
-          menus.map((menu, index) => renderMenu(menu, index))
-        ) : (
-          <div className="empty-state">
-            <p>오늘의 메뉴가 없습니다</p>
+  const renderTodayView = () => {
+    console.log('🎨 renderTodayView - menus:', menus.length, menus)
+    return (
+      <div className="content">
+        <div className="page-header">
+          <h2>{format(date, 'yyyy년 MM월 dd일 (E)', { locale: ko })}</h2>
+          <p className="subtitle">{menus.length}개의 메뉴</p>
+          {/* 디버깅 정보 */}
+          <div style={{padding: '10px', background: '#f0f0f0', fontSize: '12px', marginTop: '10px', borderRadius: '5px'}}>
+            🔍 디버그: {menus.length > 0 ? `메뉴 ${menus.length}개 로드됨` : '메뉴 없음'}
+            {menus.length > 0 && ` (첫 번째: ${menus[0]?.restaurant})`}
           </div>
-        )}
+        </div>
+        <div className="menus-container">
+          {menus.length > 0 ? (
+            menus.map((menu, index) => renderMenu(menu, index))
+          ) : (
+            <div className="empty-state">
+              <p>오늘의 메뉴가 없습니다</p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderWeekView = () => {
+    // 선택된 식당의 메뉴만 필터링
+    const filteredMenus = menus.filter(menu => menu.restaurant === selectedRestaurant)
     const grouped = groupMenusByDate()
     const dates = Object.keys(grouped).sort()
+    
+    // 식당별로 그룹화
+    const groupedByRestaurant: { [key: string]: { [key: string]: Menu[] } } = {}
+    menus.forEach(menu => {
+      if (!groupedByRestaurant[menu.restaurant]) {
+        groupedByRestaurant[menu.restaurant] = {}
+      }
+      if (!groupedByRestaurant[menu.restaurant][menu.date]) {
+        groupedByRestaurant[menu.restaurant][menu.date] = []
+      }
+      groupedByRestaurant[menu.restaurant][menu.date].push(menu)
+    })
+    
+    const restaurants = Object.keys(groupedByRestaurant)
+    const restaurantDates = Object.keys(groupedByRestaurant[selectedRestaurant] || {}).sort()
 
     return (
       <div className="content">
         <div className="page-header">
           <h2>이번 주 메뉴</h2>
-          <p className="subtitle">{dates.length}일 메뉴</p>
+          <p className="subtitle">{restaurantDates.length}일 메뉴</p>
         </div>
+        
+        {/* 식당 선택 탭 */}
+        <div className="restaurant-tabs">
+          {restaurants.map(restaurant => (
+            <button
+              key={restaurant}
+              className={`restaurant-tab ${selectedRestaurant === restaurant ? 'active' : ''}`}
+              onClick={() => setSelectedRestaurant(restaurant)}
+            >
+              {restaurant.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
+        
         <div className="week-container">
-          {dates.map(dateStr => {
-            const dayMenus = grouped[dateStr]
+          {restaurantDates.map(dateStr => {
+            const dayMenus = groupedByRestaurant[selectedRestaurant][dateStr]
             const dateObj = new Date(dateStr)
             const isToday = format(dateObj, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
 
@@ -122,38 +165,7 @@ function App() {
     )
   }
 
-  const renderMonthView = () => {
-    const grouped = groupMenusByDate()
-    const dates = Object.keys(grouped).sort()
 
-    return (
-      <div className="content">
-        <div className="page-header">
-          <h2>{format(date, 'yyyy년 MM월', { locale: ko })} 메뉴</h2>
-          <p className="subtitle">{dates.length}일 메뉴 / 총 {menus.length}개</p>
-        </div>
-        <div className="month-container">
-          {dates.map(dateStr => {
-            const dayMenus = grouped[dateStr]
-            const dateObj = new Date(dateStr)
-            const isToday = format(dateObj, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
-
-            return (
-              <div key={dateStr} className={`day-card ${isToday ? 'today' : ''}`}>
-                <div className="day-header">
-                  <h3>{format(dateObj, 'M/d (E)', { locale: ko })}</h3>
-                  {isToday && <span className="today-badge">오늘</span>}
-                </div>
-                <div className="day-menus">
-                  {dayMenus.map((menu, index) => renderMenu(menu, index))}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="app">
@@ -173,13 +185,7 @@ function App() {
           className={`tab ${view === 'week' ? 'active' : ''}`}
           onClick={() => setView('week')}
         >
-          📆 주간
-        </button>
-        <button
-          className={`tab ${view === 'month' ? 'active' : ''}`}
-          onClick={() => setView('month')}
-        >
-          📆 월간
+          📆 이번 주 (월~금)
         </button>
       </nav>
 
@@ -192,7 +198,6 @@ function App() {
         <>
           {view === 'today' && renderTodayView()}
           {view === 'week' && renderWeekView()}
-          {view === 'month' && renderMonthView()}
         </>
       )}
 
