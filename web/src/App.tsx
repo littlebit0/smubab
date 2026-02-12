@@ -16,6 +16,7 @@ function App() {
   const [menus, setMenus] = useState<Menu[]>([])
   const [date, setDate] = useState(new Date())
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>('서울_학생식당')
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     loadMenus()
@@ -24,15 +25,28 @@ function App() {
   const loadMenus = async () => {
     try {
       setLoading(true)
+      setError(null)
       if (view === 'today') {
         console.log('Fetching today menus...')
         const response = await menuAPI.getTodayMenus()
         console.log('Response received:', response)
+        
+        // 응답에 에러가 포함되어 있는 경우
+        if (!response.success && response.error) {
+          setError(response.error)
+        }
+        
         setMenus(response.menus || [])
       } else if (view === 'week') {
         console.log('Fetching weekly menus...')
         const response = await menuAPI.getWeeklyMenus()
         console.log('Response received:', response)
+        
+        // 응답에 에러가 포함되어 있는 경우
+        if (!response.success && response.error) {
+          setError(response.error)
+        }
+        
         setMenus(response.data || [])
       }
     } catch (error: any) {
@@ -43,6 +57,9 @@ function App() {
         status: error.response?.status,
         url: error.config?.url
       })
+      
+      const errorMsg = error.response?.data?.error || error.message || '알 수 없는 오류가 발생했습니다'
+      setError(errorMsg)
       setMenus([])
     } finally {
       setLoading(false)
@@ -92,7 +109,11 @@ function App() {
           ) : (
             <div className="empty-state">
               <p>메뉴 정보를 불러올 수 없습니다</p>
-              <p style={{fontSize: '0.9rem', color: '#999', marginTop: '0.5rem'}}>백엔드 API가 연결되지 않았습니다</p>
+              {error && (
+                <p style={{fontSize: '0.85rem', color: '#e74c3c', marginTop: '0.5rem', wordBreak: 'break-word'}}>
+                  오류: {error}
+                </p>
+              )}
             </div>
           )}
         </div>

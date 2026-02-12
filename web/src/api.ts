@@ -30,12 +30,14 @@ export interface DailyMenuResponse {
   date: string;
   menus: Menu[];
   message?: string;
+  error?: string;
 }
 
 export interface MenuResponse {
   success: boolean;
   data: Menu[];
   message?: string;
+  error?: string;
 }
 
 export const menuAPI = {

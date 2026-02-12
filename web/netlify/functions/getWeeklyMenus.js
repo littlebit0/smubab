@@ -314,13 +314,16 @@ exports.handler = async (event, context) => {
 
     } catch (error) {
         console.error('Error in getWeeklyMenus:', error);
+        console.error('Stack:', error.stack);
 
         return {
-            statusCode: 500,
+            statusCode: 200,
             headers,
             body: JSON.stringify({
                 success: false,
-                error: error.message
+                data: [],
+                error: error.message,
+                stack: error.stack
             })
         };
     }
