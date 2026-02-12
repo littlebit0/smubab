@@ -33,7 +33,6 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to load menus:', error)
-      // 에러 시 빈 배열로 설정 (백엔드 없어도 UI는 보이도록)
       setMenus([])
     } finally {
       setLoading(false)

@@ -1,13 +1,14 @@
 import axios from 'axios';
 
-// 환경 변수에서 API URL 가져오기
-// 개발 환경: 빈 문자열(Vite 프록시 사용) 또는 로컬 백엔드
-// 프로덕션 환경: Netlify 환경 변수에서 설정된 백엔드 URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+// Netlify Functions를 우선 사용, 없으면 백엔드 API 사용
+// 개발 환경: 프록시를 통해 백엔드 또는 Functions 접근
+// 프로덕션 환경: /.netlify/functions/ 경로 사용
+const isNetlifyProduction = import.meta.env.PROD;
+const API_BASE_URL = isNetlifyProduction ? '' : (import.meta.env.VITE_API_URL || '');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 30000, // Functions는 더 오래 걸릴 수 있음
 });
 
 export interface MenuItem {
@@ -39,7 +40,11 @@ export interface MenuResponse {
 
 export const menuAPI = {
   getTodayMenus: async (): Promise<DailyMenuResponse> => {
-    const response = await api.get<DailyMenuResponse>('/api/menus/today');
+    // Netlify Functions 사용
+    const url = isNetlifyProduction 
+      ? '/.netlify/functions/getTodayMenus'
+      : '/api/menus/today';
+    const response = await api.get<DailyMenuResponse>(url);
     return response.data;
   },
 
@@ -49,9 +54,12 @@ export const menuAPI = {
   },
 
   getWeeklyMenus: async (targetDate?: string): Promise<MenuResponse> => {
-    const url = targetDate 
-      ? `/api/menus/week?target_date=${targetDate}`
-      : '/api/menus/week';
+    // Netlify Functions 사용
+    const url = isNetlifyProduction
+      ? '/.netlify/functions/getWeeklyMenus'
+      : (targetDate 
+        ? `/api/menus/week?target_date=${targetDate}`
+        : '/api/menus/week');
     const response = await api.get<MenuResponse>(url);
     return response.data;
   },
