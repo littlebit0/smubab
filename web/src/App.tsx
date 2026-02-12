@@ -24,22 +24,17 @@ function App() {
   const loadMenus = async () => {
     try {
       setLoading(true)
-      console.log('🔄 메뉴 로딩 시작:', view)
       if (view === 'today') {
         const response = await menuAPI.getTodayMenus()
-        console.log('📥 오늘 메뉴 응답:', response)
-        console.log('📋 메뉴 개수:', response.menus?.length)
-        setMenus(response.menus)
+        setMenus(response.menus || [])
       } else if (view === 'week') {
         const response = await menuAPI.getWeeklyMenus()
-        console.log('📥 주간 메뉴 응답:', response)
-        console.log('📋 메뉴 개수:', response.data?.length)
-        setMenus(response.data)
+        setMenus(response.data || [])
       }
-      console.log('✅ 메뉴 로딩 완료')
     } catch (error) {
-      console.error('❌ Failed to load menus:', error)
-      alert('메뉴를 불러오는데 실패했습니다.')
+      console.error('Failed to load menus:', error)
+      // 에러 시 빈 배열로 설정 (백엔드 없어도 UI는 보이도록)
+      setMenus([])
     } finally {
       setLoading(false)
     }
@@ -76,24 +71,19 @@ function App() {
   )
 
   const renderTodayView = () => {
-    console.log('🎨 renderTodayView - menus:', menus.length, menus)
     return (
       <div className="content">
         <div className="page-header">
           <h2>{format(date, 'yyyy년 MM월 dd일 (E)', { locale: ko })}</h2>
           <p className="subtitle">{menus.length}개의 메뉴</p>
-          {/* 디버깅 정보 */}
-          <div style={{padding: '10px', background: '#f0f0f0', fontSize: '12px', marginTop: '10px', borderRadius: '5px'}}>
-            🔍 디버그: {menus.length > 0 ? `메뉴 ${menus.length}개 로드됨` : '메뉴 없음'}
-            {menus.length > 0 && ` (첫 번째: ${menus[0]?.restaurant})`}
-          </div>
         </div>
         <div className="menus-container">
           {menus.length > 0 ? (
             menus.map((menu, index) => renderMenu(menu, index))
           ) : (
             <div className="empty-state">
-              <p>오늘의 메뉴가 없습니다</p>
+              <p>메뉴 정보를 불러올 수 없습니다</p>
+              <p style={{fontSize: '0.9rem', color: '#999', marginTop: '0.5rem'}}>백엔드 API가 연결되지 않았습니다</p>
             </div>
           )}
         </div>
