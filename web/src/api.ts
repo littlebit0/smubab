@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_BASE_URL = '';
+// 환경 변수에서 API URL 가져오기
+// 개발 환경: 빈 문자열(Vite 프록시 사용) 또는 로컬 백엔드
+// 프로덕션 환경: Netlify 환경 변수에서 설정된 백엔드 URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

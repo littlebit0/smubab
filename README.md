@@ -66,4 +66,26 @@ npm run dev
 
 ## 개발 상태
 
-🚧 개발 중...
+✅ 백엔드 API 완료
+✅ 웹 애플리케이션 완료
+✅ 서울캠퍼스 크롤링 완료
+✅ 천안캠퍼스 샘플 메뉴 제공
+🚧 모바일 앱 개발 예정
+
+## 배포
+
+### 프론트엔드 (Netlify)
+[![Netlify Status](https://api.netlify.com/api/v1/badges/your-site-id/deploy-status)](https://app.netlify.com/sites/your-site-name/deploys)
+
+프론트엔드는 Netlify에 배포됩니다. 자세한 배포 가이드는 [DEPLOYMENT.md](DEPLOYMENT.md)를 참조하세요.
+
+### 백엔드 (Render/Railway/Fly.io)
+백엔드는 Render, Railway, Fly.io 등에 배포 가능합니다.
+
+**필수 환경 변수:**
+- Python 3.12+
+- 포트: `$PORT` (자동 할당)
+
+## 라이센스
+
+MIT License
