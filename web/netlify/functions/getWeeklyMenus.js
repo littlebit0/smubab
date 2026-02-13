@@ -1,8 +1,7 @@
 /**
- * 간단한 샘플 데이터로 주간 메뉴 반환
- * Netlify Functions 테스트용
+ * 백엔드 API를 프록시하여 주간 메뉴를 반환
  */
-exports.handler = async (event, context) => {
+exports.handler = async (event) => {
     const headers = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type',
@@ -15,56 +14,38 @@ exports.handler = async (event, context) => {
     }
 
     try {
-        console.log('getWeeklyMenus function called');
+        const apiBaseUrl = process.env.BACKEND_API_URL || process.env.VITE_API_URL;
 
-        // 이번 주 월요일부터 금요일까지 날짜 생성
-        const today = new Date();
-        const dayOfWeek = today.getDay();
-        const monday = new Date(today);
-        monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-
-        const menus = [];
-        const restaurants = ['서울_학생식당', '천안_교직원식당', '천안_학생식당'];
-        const mealTypes = ['lunch', 'dinner'];
-        
-        // 월요일부터 금요일까지 (5일)
-        for (let i = 0; i < 5; i++) {
-            const date = new Date(monday);
-            date.setDate(monday.getDate() + i);
-            const dateStr = date.toISOString().split('T')[0];
-
-            restaurants.forEach(restaurant => {
-                mealTypes.forEach(mealType => {
-                    menus.push({
-                        date: dateStr,
-                        restaurant: restaurant,
-                        meal_type: mealType,
-                        items: [
-                            { name: '잡곡밥', price: null },
-                            { name: '국/찌개', price: null },
-                            { name: '메인반찬', price: null },
-                            { name: '부반찬', price: null },
-                            { name: '김치', price: null }
-                        ]
-                    });
-                });
-            });
+        if (!apiBaseUrl) {
+            throw new Error('BACKEND_API_URL 또는 VITE_API_URL 환경 변수가 설정되지 않았습니다.');
         }
 
-        console.log(`Returning ${menus.length} sample weekly menus`);
+        const normalizedBaseUrl = apiBaseUrl.replace(/\/$/, '');
+        const params = new URLSearchParams(event.queryStringParameters || {});
+        const query = params.toString();
+        const upstreamUrl = `${normalizedBaseUrl}/api/menus/week${query ? `?${query}` : ''}`;
+
+        const response = await fetch(upstreamUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`백엔드 응답 오류: ${response.status} ${response.statusText}`);
+        }
+
+        const payload = await response.json();
 
         return {
             statusCode: 200,
             headers,
-            body: JSON.stringify({
-                success: true,
-                data: menus
-            })
+            body: JSON.stringify(payload)
         };
-
     } catch (error) {
         console.error('Error in getWeeklyMenus:', error);
-        
+
         return {
             statusCode: 200,
             headers,

@@ -13,7 +13,7 @@
 
 ```
 smubab/
-├── backend/          # FastAPI 백엔드 서버 (크롤링 + API)
+├── backend/          # FastAPI 백엔드 서버 (메뉴 API)
 ├── mobile/           # React Native 모바일 앱
 ├── web/              # React 웹 애플리케이션
 └── README.md
@@ -24,7 +24,7 @@ smubab/
 ### 백엔드
 - Python 3.11+
 - FastAPI
-- BeautifulSoup4 / Selenium (웹 크롤링)
+- Pydantic
 - SQLite / PostgreSQL
 
 ### 모바일
@@ -68,8 +68,8 @@ npm run dev
 
 ✅ 백엔드 API 완료
 ✅ 웹 애플리케이션 완료
-✅ 서울캠퍼스 크롤링 완료
-✅ 천안캠퍼스 샘플 메뉴 제공
+✅ 백엔드 기본 메뉴 API 제공
+✅ 식당/식사유형별 메뉴 조회
 🚧 모바일 앱 개발 예정
 
 ## 배포

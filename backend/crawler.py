@@ -1,570 +1,672 @@
-import requests
-from bs4 import BeautifulSoup
-from datetime import date, datetime, timedelta
-from typing import List, Dict, Optional
 import logging
 import re
-from io import BytesIO
-from PIL import Image
-import pytesseract
 import time
+from datetime import date
+from io import BytesIO
+from typing import List, Optional
+from urllib.parse import urljoin
 
-from models import Menu, MenuItem, MealType, Restaurant
+import requests
+from bs4 import BeautifulSoup
+from PIL import Image, ImageOps, ImageFilter
+import pytesseract
 
-logging.basicConfig(level=logging.INFO)
+from models import MealType, Menu, MenuItem, Restaurant
+
 logger = logging.getLogger(__name__)
 
 
 class SMUCafeteriaCrawler:
-    """상명대학교 학식 크롤러"""
-    
-    def __init__(self):
-        self.base_url = "https://www.smu.ac.kr"
-        self.seoul_url = f"{self.base_url}/kor/life/restaurantView.do"
-        self.cheonan_faculty_url = f"{self.base_url}/kor/life/restaurantView3.do"
-        self.cheonan_student_url = f"{self.base_url}/kor/life/restaurantView4.do"
-        
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-        
-        # 크롤링 설정
-        self.max_retries = 3
-        self.timeout = 20
-        self.retry_delay = 2
-    
-    def crawl_daily_menu(self, target_date: date = None) -> List[Menu]:
-        """특정 날짜의 식단 정보를 크롤링합니다."""
-        if target_date is None:
-            target_date = date.today()
-        
-        menus = []
-        
-        try:
-            # 서울캠퍼스 메뉴 크롤링
-            logger.info(f"Crawling Seoul campus menu for {target_date}")
-            seoul_menus = self._crawl_seoul_campus(target_date)
-            menus.extend(seoul_menus)
-            
-            # 천안캠퍼스 메뉴 크롤링 (현재 게시판 형식이라 임시로 샘플 데이터 사용)
-            logger.info(f"Adding Cheonan sample menus for {target_date}")
-            cheonan_menus = self._get_cheonan_sample_menus(target_date)
-            menus.extend(cheonan_menus)
-            
-            logger.info(f"Total {len(menus)} menus crawled for {target_date}")
-            
-            # 메뉴가 없으면 샘플 데이터 반환
-            if not menus:
-                logger.warning("No menus found, returning sample data")
-                return self._get_sample_menu(target_date)
-            
-            return menus
-            
-        except Exception as e:
-            logger.error(f"Error crawling menu: {e}")
-            return self._get_sample_menu(target_date)
-    
-    def crawl_weekly_menu(self, target_date: date = None) -> List[Menu]:
-        """주간 식단 정보를 크롤링합니다 (해당 주의 월~금)."""
-        if target_date is None:
-            target_date = date.today()
-        
-        # 해당 날짜가 속한 주의 월요일 계산
-        weekday = target_date.weekday()  # 0=월요일, 6=일요일
-        monday = target_date - timedelta(days=weekday)
-        friday = monday + timedelta(days=4)
-        
-        logger.info(f"Crawling weekly menu: {monday} ~ {friday}")
-        
-        # 서울캠퍼스는 주간 테이블이므로 한 번만 크롤링
-        # crawl_daily_menu가 이미 해당 주의 모든 메뉴를 반환함
-        all_menus = self.crawl_daily_menu(target_date)
-        
-        # 월~금 메뉴만 필터링 및 중복 제거
-        seen = set()
-        weekly_menus = []
-        for menu in all_menus:
-            # 월~금만 포함 (주말 제외)
-            if monday <= menu.date <= friday:
-                key = (menu.date, menu.restaurant, menu.meal_type)
-                if key not in seen:
-                    seen.add(key)
-                    weekly_menus.append(menu)
-        
-        logger.info(f"Filtered {len(weekly_menus)} menus for Mon-Fri")
-        return weekly_menus
-    
+    """상명대 식단 크롤러 (서울 텍스트 + 천안 교직원 이미지 OCR)"""
 
-    
-    def _crawl_seoul_campus(self, target_date: date) -> List[Menu]:
-        """서울캠퍼스 식당 메뉴 크롤링"""
-        menus = []
-        
-        # 해당 주의 월요일 계산 (조식 샘플 생성용)
-        weekday = target_date.weekday()
-        monday = target_date - timedelta(days=weekday)
-        
+    def __init__(self):
+        self.seoul_menu_url = "https://www.smu.ac.kr/kor/life/restaurantView.do"
+        self.cheonan_faculty_board_url = "https://www.smu.ac.kr/kor/life/restaurantView3.do"
+        self.cheonan_student_board_url = "https://www.smu.ac.kr/kor/life/restaurantView4.do"
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+        }
+        self.timeout = 20
+        self.max_retries = 3
+        self.retry_delay = 1.5
+
+    def crawl_daily_menu(self, target_date: date) -> List[Menu]:
+        weekly_menus = self.crawl_weekly_menu(target_date)
+        return [menu for menu in weekly_menus if menu.date == target_date]
+
+    def crawl_weekly_menu(self, target_date: date) -> List[Menu]:
+        breakfast = self._crawl_by_category(target_date, MealType.BREAKFAST)
+        lunch = self._crawl_by_category(target_date, MealType.LUNCH)
         try:
-            # 재시도 로직
-            response = None
-            for attempt in range(self.max_retries):
-                try:
-                    response = requests.get(self.seoul_url, headers=self.headers, timeout=self.timeout)
-                    response.raise_for_status()
-                    break
-                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                    if attempt < self.max_retries - 1:
-                        logger.warning(f"Seoul campus: Retry {attempt + 1}/{self.max_retries} after {e}")
-                        time.sleep(self.retry_delay)
-                    else:
-                        raise
-            
-            if not response:
-                return menus
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            logger.info(f"Seoul campus: parsed HTML, length={len(response.content)}")
-            
-            # 두 번째 테이블이 실제 식단표
-            tables = soup.find_all('table')
-            if len(tables) < 2:
-                logger.warning("Seoul campus: 식단표 테이블을 찾을 수 없습니다")
-                return menus
-            
-            menu_table = tables[1]
-            rows = menu_table.find_all('tr')
-            
-            if len(rows) < 2:
-                logger.warning("Seoul campus: 테이블 행이 부족합니다")
-                return menus
-            
-            # 첫 번째 행: 날짜 헤더
-            header_row = rows[0]
-            header_cells = header_row.find_all(['th', 'td'])
-            
-            # 두 번째 행: 메뉴 내용
-            menu_row = rows[1]
-            menu_cells = menu_row.find_all(['th', 'td'])
-            
-            # 첫 번째 셀에서 식당 종류 확인
-            restaurant_type = Restaurant.SEOUL_STUDENT  # 기본값
-            if menu_cells[0].get_text(strip=True):
-                restaurant_label = menu_cells[0].get_text(strip=True)
-                if '교직원' in restaurant_label or '교수' in restaurant_label:
-                    restaurant_type = Restaurant.SEOUL_FACULTY
-                elif '푸드코트' in restaurant_label or '코너' in restaurant_label:
-                    restaurant_type = Restaurant.SEOUL_FOODCOURT
-            
-            # 날짜와 메뉴 매칭 - 테이블의 모든 날짜 파싱
-            for i in range(1, min(len(header_cells), len(menu_cells))):
-                date_text = header_cells[i].get_text(strip=True)
-                menu_text = menu_cells[i].get_text(strip=True)
-                
-                if not menu_text:
-                    continue
-                
-                # 날짜 파싱 (예: "월(02.09)")
-                date_match = re.search(r'\((\d{2})\.(\d{2})\)', date_text)
-                if date_match:
-                    menu_month = int(date_match.group(1))
-                    menu_day = int(date_match.group(2))
-                    
-                    # 연도 추론: target_date의 연도 사용
-                    menu_year = target_date.year
-                    
-                    # 만약 월이 12월이고 target_date가 1월이면 이전 연도
-                    if menu_month == 12 and target_date.month == 1:
-                        menu_year = target_date.year - 1
-                    # 만약 월이 1월이고 target_date가 12월이면 다음 연도
-                    elif menu_month == 1 and target_date.month == 12:
-                        menu_year = target_date.year + 1
-                    
-                    try:
-                        menu_date = date(menu_year, menu_month, menu_day)
-                    except ValueError:
-                        logger.warning(f"Invalid date: {menu_year}-{menu_month:02d}-{menu_day:02d}")
-                        continue
-                    
-                    # 메뉴 아이템 파싱
-                    parsed_items = self._parse_menu_text(menu_text)
-                    
-                    # Dict를 MenuItem 객체로 변환
-                    menu_items = [MenuItem(**item) for item in parsed_items]
-                    
-                    # Menu 객체 생성
-                    if menu_items:
-                        menu = Menu(
-                            date=menu_date,
-                            restaurant=restaurant_type,
-                            meal_type=MealType.LUNCH,  # 기본값
-                            items=menu_items
-                        )
-                        menus.append(menu)
-                        logger.info(f"Seoul: {restaurant_type.value} {menu_date} - {len(menu_items)} items")
-            
-            # 서울캠 조식 샘플 추가 (주간 메뉴 테이블에 조식 정보가 없으므로)
+            cheonan_faculty_lunch = self._crawl_cheonan_faculty_lunch(target_date)
+        except Exception as error:
+            logger.warning(f"Cheonan faculty crawl failed, fallback used: {error}")
+            weekday = target_date.weekday()
+            monday = target_date.fromordinal(target_date.toordinal() - weekday)
+            cheonan_faculty_lunch = [
+                Menu(
+                    date=monday.fromordinal(monday.toordinal() + i),
+                    restaurant=Restaurant.CHEONAN_FACULTY,
+                    meal_type=MealType.LUNCH,
+                    items=[MenuItem(name="중식정보없음", price=None)],
+                )
+                for i in range(5)
+            ]
+
+        try:
+            cheonan_student_menus = self._crawl_cheonan_student_menus(target_date)
+        except Exception as error:
+            logger.warning(f"Cheonan student crawl failed, fallback used: {error}")
+            weekday = target_date.weekday()
+            monday = target_date.fromordinal(target_date.toordinal() - weekday)
+            cheonan_student_menus = []
             for i in range(5):
-                breakfast_date = monday + timedelta(days=i)
-                menus.append(Menu(
-                    date=breakfast_date,
+                menu_date = monday.fromordinal(monday.toordinal() + i)
+                cheonan_student_menus.append(
+                    Menu(
+                        date=menu_date,
+                        restaurant=Restaurant.CHEONAN_STUDENT,
+                        meal_type=MealType.BREAKFAST,
+                        items=[MenuItem(name="조식정보없음", price=None)],
+                    )
+                )
+                cheonan_student_menus.append(
+                    Menu(
+                        date=menu_date,
+                        restaurant=Restaurant.CHEONAN_STUDENT,
+                        meal_type=MealType.LUNCH,
+                        items=[MenuItem(name="중식정보없음", price=None)],
+                    )
+                )
+
+        all_menus = breakfast + lunch + cheonan_faculty_lunch + cheonan_student_menus
+
+        # 날짜+식당+식사유형 중복 제거
+        dedup = {}
+        for menu in all_menus:
+            dedup[(menu.date, menu.restaurant, menu.meal_type)] = menu
+
+        return list(dedup.values())
+
+    def _crawl_by_category(self, target_date: date, meal_type: MealType) -> List[Menu]:
+        category_value = "B" if meal_type == MealType.BREAKFAST else "L"
+        params = {
+            "mode": "menuList",
+            "srMealCategory": category_value,
+            "srDt": target_date.isoformat(),
+        }
+
+        response = self._get_with_retry(
+            self.seoul_menu_url,
+            params=params,
+        )
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        table = soup.select_one(".menu-list-box table.smu-table")
+
+        if not table:
+            logger.warning("식단표 테이블을 찾지 못했습니다.")
+            return []
+
+        dates = self._extract_dates(table, target_date)
+        if not dates:
+            return []
+
+        tbody = table.find("tbody")
+        rows = tbody.find_all("tr") if tbody else []
+
+        if meal_type == MealType.BREAKFAST and not rows:
+            return [
+                Menu(
+                    date=menu_date,
                     restaurant=Restaurant.SEOUL_STUDENT,
                     meal_type=MealType.BREAKFAST,
-                    items=[
-                        MenuItem(name="토스트", price=None),
-                        MenuItem(name="시리얼", price=None),
-                        MenuItem(name="우유", price=None),
-                        MenuItem(name="과일", price=None),
-                    ]
-                ))
-            
-        except Exception as e:
-            logger.error(f"Error crawling Seoul campus: {e}")
-            import traceback
-            traceback.print_exc()
-        
-        return menus
-    
-    def _crawl_cheonan_campus(self, target_date: date, url: str, restaurant: Restaurant) -> List[Menu]:
-        """천안캠퍼스 식당 메뉴 크롤링 (게시판 형식)"""
-        menus = []
-        
-        try:
-            # 재시도 로직
-            response = None
-            for attempt in range(self.max_retries):
-                try:
-                    response = requests.get(url, headers=self.headers, timeout=self.timeout)
-                    response.raise_for_status()
-                    break
-                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                    if attempt < self.max_retries - 1:
-                        logger.warning(f"{restaurant.value}: Retry {attempt + 1}/{self.max_retries} after {e}")
-                        time.sleep(self.retry_delay)
-                    else:
-                        raise
-            
-            if not response:
-                return menus
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            logger.info(f"{restaurant.value}: parsed HTML, length={len(response.content)}")
-            
-            # 게시판 게시물 링크 찾기 - 가장 최근 게시물
-            # mode=view가 포함된 a 태그 찾기
-            article_links = soup.find_all('a', href=True)
-            article_links = [link for link in article_links if 'mode=view' in link.get('href', '')]
-            
-            if not article_links:
-                logger.warning(f"{restaurant.value}: 게시물을 찾을 수 없습니다")
-                return menus
-            
-            logger.info(f"{restaurant.value}: {len(article_links)}개의 게시물 찾음")
-            
-            # 첫 번째 게시물 (가장 최근)
-            first_link = article_links[0]
-            article_url = first_link.get('href')
-            
-            # 상대 URL을 절대 URL로 변환
-            if not article_url.startswith('http'):
-                article_url = url.split('?')[0] + article_url.replace('&amp;', '&')
-            
-            logger.info(f"{restaurant.value}: 게시물 URL: {article_url}")
-            
-            # 게시물 페이지 크롤링
-            article_response = requests.get(article_url, headers=self.headers, timeout=self.timeout)
-            article_response.raise_for_status()
-            article_soup = BeautifulSoup(article_response.content, 'html.parser')
-            
-            # 게시물 내용에서 테이블 찾기
-            tables = article_soup.find_all('table')
-            
-            for table in tables:
-                rows = table.find_all('tr')
-                if len(rows) < 2:
+                    items=[MenuItem(name="조식제공X", price=None)],
+                )
+                for menu_date in dates
+            ]
+
+        menus: List[Menu] = []
+        for row in rows:
+            cells = row.find_all(["th", "td"])
+            if len(cells) < 2:
+                continue
+
+            for index, menu_date in enumerate(dates, start=1):
+                if index >= len(cells):
                     continue
-                
-                # 첫 번째 행: 날짜 헤더
-                header_row = rows[0]
-                header_cells = header_row.find_all(['th', 'td'])
-                
-                # 두 번째 행부터: 메뉴 내용
-                for row_idx in range(1, len(rows)):
-                    menu_row = rows[row_idx]
-                    menu_cells = menu_row.find_all(['th', 'td'])
-                    
-                    # 날짜와 메뉴 매칭
-                    for i in range(1, min(len(header_cells), len(menu_cells))):
-                        date_text = header_cells[i].get_text(strip=True)
-                        menu_text = menu_cells[i].get_text(strip=True)
-                        
-                        if not menu_text:
-                            continue
-                        
-                        # 날짜 파싱
-                        date_match = re.search(r'(\d{1,2})[./](\d{1,2})', date_text)
-                        if date_match:
-                            menu_month = int(date_match.group(1))
-                            menu_day = int(date_match.group(2))
-                            
-                            # 연도 추론
-                            menu_year = target_date.year
-                            if menu_month == 12 and target_date.month == 1:
-                                menu_year = target_date.year - 1
-                            elif menu_month == 1 and target_date.month == 12:
-                                menu_year = target_date.year + 1
-                            
-                            try:
-                                menu_date = date(menu_year, menu_month, menu_day)
-                            except ValueError:
-                                continue
-                            
-                            # 메뉴 아이템 파싱
-                            parsed_items = self._parse_menu_text(menu_text)
-                            menu_items = [MenuItem(**item) for item in parsed_items]
-                            
-                            if menu_items:
-                                menu = Menu(
-                                    date=menu_date,
-                                    restaurant=restaurant,
-                                    meal_type=MealType.LUNCH,
-                                    items=menu_items
-                                )
-                                menus.append(menu)
-                                logger.info(f"{restaurant.value}: {menu_date} - {len(menu_items)} items")
-            
-            if not menus:
-                logger.warning(f"{restaurant.value}: 테이블에서 메뉴를 추출하지 못했습니다")
-            
-        except Exception as e:
-            logger.error(f"Error crawling {restaurant.value}: {e}")
-            import traceback
-            traceback.print_exc()
-        
+
+                menu_items = self._extract_items_from_cell(cells[index])
+
+                if meal_type == MealType.BREAKFAST and not menu_items:
+                    menu_items = [MenuItem(name="조식제공X", price=None)]
+
+                if not menu_items:
+                    continue
+
+                menus.append(
+                    Menu(
+                        date=menu_date,
+                        restaurant=Restaurant.SEOUL_STUDENT,
+                        meal_type=meal_type,
+                        items=menu_items,
+                    )
+                )
+
         return menus
-    
-    def _extract_image_urls(self, soup: BeautifulSoup) -> List[str]:
-        """게시물에서 이미지 URL 추출"""
-        image_urls = []
-        
-        images = soup.find_all('img')
-        for img in images:
-            src = img.get('src')
-            if src:
-                if src.startswith('http'):
-                    image_urls.append(src)
-                else:
-                    image_urls.append(self.base_url + src)
-        
-        return image_urls
-    
-    def _extract_text_from_image(self, image_url: str) -> str:
-        """이미지에서 OCR을 사용하여 텍스트 추출"""
-        try:
-            response = requests.get(image_url, headers=self.headers, timeout=10)
-            response.raise_for_status()
-            
-            image = Image.open(BytesIO(response.content))
-            
-            # OCR 실행 (한국어 + 영어)
-            text = pytesseract.image_to_string(image, lang='kor+eng')
-            
-            logger.info(f"Extracted text from image: {text[:100]}...")
-            return text
-            
-        except Exception as e:
-            logger.error(f"Error extracting text from image {image_url}: {e}")
-            return ""
-    
-    def _parse_menu_text(self, text: str, target_date: date = None, restaurant: Restaurant = None) -> List[Dict]:
-        """추출된 텍스트에서 메뉴 정보 파싱
-        
-        서울캠퍼스: "잡곡밥경상도식소고기무국돈육메추리알장조림" 형태
-        천안캠퍼스: OCR로 추출된 줄바꿈 있는 텍스트
-        """
-        items = []
-        
-        try:
-            # 줄바꿈이 있으면 라인별로 처리
-            if '\n' in text:
-                lines = text.strip().split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if line and len(line) > 1:
-                        # 가격 패턴 찾기
-                        price_match = re.search(r'(\d{1,3}(?:,\d{3})*)\s*원', line)
-                        price = int(price_match.group(1).replace(',', '')) if price_match else None
-                        
-                        # 메뉴 이름
-                        name = re.sub(r'\d{1,3}(?:,\d{3})*\s*원', '', line).strip()
-                        
-                        if name:
-                            items.append({"name": name, "price": price, "calories": None})
-            else:
-                # 서울캠퍼스: 공백 없는 텍스트 파싱
-                # 키워드로 분리 (밥, 국, 찌개, 조림, 구이, 볶음 등)
-                keywords = ['밥', '국', '찌개', '탕', '찜', '조림', '볶음', '무침', '구이', '전', 
-                           '튀김', '회', '샐러드', '스프', '파스타', '스테이크', '덮밥', '면']
-                
-                # 임시로 키워드 뒤에 구분자 추가
-                temp_text = text
-                for keyword in keywords:
-                    temp_text = temp_text.replace(keyword, f'{keyword}|')
-                
-                # 파이프로 분리
-                parts = [p.strip() for p in temp_text.split('|') if p.strip()]
-                
-                # 메뉴 아이템으로 변환
-                for part in parts:
-                    if len(part) > 1:
-                        # 가격 추출
-                        price_match = re.search(r'(\d{1,3}(?:,\d{3})*)\s*원', part)
-                        price = int(price_match.group(1).replace(',', '')) if price_match else None
-                        
-                        name = re.sub(r'\d{1,3}(?:,\d{3})*\s*원', '', part).strip()
-                        
-                        if name:
-                            items.append({"name": name, "price": price, "calories": None})
-        
-        except Exception as e:
-            logger.error(f"Error parsing menu text: {e}")
-        
-        return items if items else [{"name": text[:50], "price": None, "calories": None}]
-    
-    def _get_cheonan_sample_menus(self, target_date: date) -> List[Menu]:
-        """천안캠퍼스 샘플 메뉴 데이터를 반환합니다 (월~금 생성)."""
-        menus = []
-        
-        # 해당 주의 월요일 계산
-        weekday = target_date.weekday()
-        monday = target_date - timedelta(days=weekday)
-        
-        # 월~금 5일간 메뉴 생성
-        for i in range(5):
-            menu_date = monday + timedelta(days=i)
-            
-            # 교직원 식당 - 조식
-            menus.append(Menu(
-                date=menu_date,
-                restaurant=Restaurant.CHEONAN_FACULTY,
-                meal_type=MealType.BREAKFAST,
-                items=[
-                    MenuItem(name="토스트", price=None),
-                    MenuItem(name="계란후라이", price=None),
-                    MenuItem(name="우유", price=None),
-                    MenuItem(name="과일", price=None),
-                ]
-            ))
-            
-            # 교직원 식당 - 중식
-            menus.append(Menu(
-                date=menu_date,
-                restaurant=Restaurant.CHEONAN_FACULTY,
-                meal_type=MealType.LUNCH,
-                items=[
-                    MenuItem(name="쌀밥", price=None),
-                    MenuItem(name="된장찌개", price=None),
-                    MenuItem(name="불고기", price=None),
-                    MenuItem(name="나물무침", price=None),
-                    MenuItem(name="김치", price=None),
-                ]
-            ))
-            
-            # 학생 식당 - 조식
-            menus.append(Menu(
-                date=menu_date,
-                restaurant=Restaurant.CHEONAN_STUDENT,
-                meal_type=MealType.BREAKFAST,
-                items=[
-                    MenuItem(name="토스트", price=None),
-                    MenuItem(name="시리얼", price=None),
-                    MenuItem(name="우유", price=None),
-                    MenuItem(name="요거트", price=None),
-                ]
-            ))
-            
-            # 학생 식당 - 중식
-            menus.append(Menu(
-                date=menu_date,
-                restaurant=Restaurant.CHEONAN_STUDENT,
-                meal_type=MealType.LUNCH,
-                items=[
-                    MenuItem(name="잡곡밥", price=None),
-                    MenuItem(name="김치찌개", price=None),
-                    MenuItem(name="돈까스", price=None),
-                    MenuItem(name="샐러드", price=None),
-                    MenuItem(name="배추김치", price=None),
-                ]
-            ))
-        
-        logger.info(f"Generated {len(menus)} Cheonan sample menus")
-        return menus
-    
-    def _get_sample_menu(self, target_date: date) -> List[Menu]:
-        """샘플 메뉴 데이터를 반환합니다."""
-        sample_menus = [
-            Menu(
-                date=target_date,
-                restaurant=Restaurant.SEOUL_STUDENT,
-                meal_type=MealType.BREAKFAST,
-                items=[
-                    MenuItem(name="토스트", price=2000),
-                    MenuItem(name="시리얼", price=1500),
-                    MenuItem(name="우유", price=1000),
-                ]
-            ),
-            Menu(
-                date=target_date,
-                restaurant=Restaurant.SEOUL_STUDENT,
-                meal_type=MealType.LUNCH,
-                items=[
-                    MenuItem(name="제육볶음", price=5000),
-                    MenuItem(name="김치찌개", price=4500),
-                    MenuItem(name="돈까스", price=6000),
-                    MenuItem(name="밥", price=1000),
-                ]
-            ),
-            Menu(
-                date=target_date,
-                restaurant=Restaurant.SEOUL_STUDENT,
-                meal_type=MealType.DINNER,
-                items=[
-                    MenuItem(name="불고기", price=6000),
-                    MenuItem(name="된장찌개", price=4000),
-                    MenuItem(name="생선구이", price=5500),
-                ]
-            ),
-            Menu(
-                date=target_date,
-                restaurant=Restaurant.SEOUL_FACULTY,
-                meal_type=MealType.LUNCH,
-                items=[
-                    MenuItem(name="스테이크", price=12000),
-                    MenuItem(name="파스타", price=9000),
-                    MenuItem(name="샐러드", price=7000),
-                ]
-            ),
-            Menu(
-                date=target_date,
-                restaurant=Restaurant.SEOUL_FOODCOURT,
-                meal_type=MealType.LUNCH,
-                items=[
-                    MenuItem(name="라면", price=3500),
-                    MenuItem(name="김밥", price=3000),
-                    MenuItem(name="떡볶이", price=4000),
-                ]
+
+    def _extract_dates(self, table: BeautifulSoup, target_date: date) -> List[date]:
+        dates: List[date] = []
+
+        header_cells = table.select("thead tr th")
+        for cell in header_cells[1:]:
+            text = cell.get_text(" ", strip=True)
+            matched = re.search(r"\((\d{2})\.(\d{2})\)", text)
+            if not matched:
+                continue
+
+            month = int(matched.group(1))
+            day = int(matched.group(2))
+            year = target_date.year
+
+            if month == 12 and target_date.month == 1:
+                year -= 1
+            elif month == 1 and target_date.month == 12:
+                year += 1
+
+            try:
+                dates.append(date(year, month, day))
+            except ValueError:
+                continue
+
+        return dates
+
+    def _extract_items_from_cell(self, cell: BeautifulSoup) -> List[MenuItem]:
+        items: List[MenuItem] = []
+
+        li_elements = cell.find_all("li")
+        if li_elements:
+            for li in li_elements:
+                name = li.get_text(" ", strip=True)
+                if name:
+                    items.append(MenuItem(name=name, price=None))
+            return items
+
+        text = cell.get_text("\n", strip=True)
+        for line in text.splitlines():
+            name = line.strip()
+            if name:
+                items.append(MenuItem(name=name, price=None))
+
+        return items
+
+    def _crawl_cheonan_faculty_lunch(self, target_date: date) -> List[Menu]:
+        article_url = self._find_cheonan_faculty_article_url(target_date)
+        if not article_url:
+            return []
+
+        response = self._get_with_retry(article_url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        title_text = self._extract_article_title(soup)
+        week_dates = self._extract_week_dates_from_title(title_text, target_date)
+
+        image_urls = self._extract_article_image_urls(soup, article_url)
+        if not image_urls:
+            logger.warning("천안 교직원식당 게시글에서 메뉴 이미지를 찾지 못했습니다.")
+            return []
+
+        weekly_menu_texts = self._extract_weekly_menu_texts_from_images(image_urls)
+        if not weekly_menu_texts:
+            return []
+
+        menus: List[Menu] = []
+        for index, menu_date in enumerate(week_dates):
+            if index >= len(weekly_menu_texts):
+                break
+
+            day_items = weekly_menu_texts[index]
+            if not day_items:
+                day_items = ["중식정보없음"]
+            day_items = self._append_notice_items(day_items)
+
+            menus.append(
+                Menu(
+                    date=menu_date,
+                    restaurant=Restaurant.CHEONAN_FACULTY,
+                    meal_type=MealType.LUNCH,
+                    items=[MenuItem(name=item, price=None) for item in day_items],
+                )
             )
+
+        logger.info(f"Cheonan faculty OCR menus parsed: {len(menus)}")
+        return menus
+
+    def _crawl_cheonan_student_menus(self, target_date: date) -> List[Menu]:
+        article_url = self._find_cheonan_student_article_url(target_date)
+        if not article_url:
+            return []
+
+        response = self._get_with_retry(article_url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        title_text = self._extract_article_title(soup)
+        week_dates = self._extract_week_dates_from_title(title_text, target_date)
+
+        image_urls = self._extract_article_image_urls(soup, article_url)
+        if not image_urls:
+            logger.warning("천안 학생식당 게시글에서 메뉴 이미지를 찾지 못했습니다.")
+            return []
+
+        weekly_day_texts = self._extract_weekly_menu_texts_from_images(image_urls)
+        if not weekly_day_texts:
+            return []
+
+        menus: List[Menu] = []
+        for index, menu_date in enumerate(week_dates):
+            if index >= len(weekly_day_texts):
+                break
+
+            day_items = weekly_day_texts[index]
+            breakfast_items, lunch_items = self._split_student_meals(day_items)
+            breakfast_items = self._append_notice_items(breakfast_items)
+            lunch_items = self._append_notice_items(lunch_items)
+
+            menus.append(
+                Menu(
+                    date=menu_date,
+                    restaurant=Restaurant.CHEONAN_STUDENT,
+                    meal_type=MealType.BREAKFAST,
+                    items=[MenuItem(name=item, price=None) for item in breakfast_items],
+                )
+            )
+            menus.append(
+                Menu(
+                    date=menu_date,
+                    restaurant=Restaurant.CHEONAN_STUDENT,
+                    meal_type=MealType.LUNCH,
+                    items=[MenuItem(name=item, price=None) for item in lunch_items],
+                )
+            )
+
+        logger.info(f"Cheonan student OCR menus parsed: {len(menus)}")
+        return menus
+
+    def _find_cheonan_faculty_article_url(self, target_date: date) -> Optional[str]:
+        response = self._get_with_retry(self.cheonan_faculty_board_url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        target_weekday = target_date.weekday()
+        monday = target_date.fromordinal(target_date.toordinal() - target_weekday)
+        friday = monday.fromordinal(monday.toordinal() + 4)
+
+        candidates = []
+        for anchor in soup.find_all("a", href=True):
+            href = anchor.get("href", "")
+            if "mode=view" not in href:
+                continue
+
+            title_text = anchor.get("title") or anchor.get_text(" ", strip=True)
+            if "교직원 식당 주간 메뉴" not in title_text.replace(" ", ""):
+                if "교직원식당" not in title_text and "주간 메뉴" not in title_text:
+                    continue
+
+            article_url = urljoin(self.cheonan_faculty_board_url, href.replace("&amp;", "&"))
+            week_dates = self._extract_week_dates_from_title(title_text, target_date)
+            candidates.append((article_url, week_dates))
+
+        for article_url, week_dates in candidates:
+            if week_dates and week_dates[0] == monday and week_dates[-1] == friday:
+                return article_url
+
+        return candidates[0][0] if candidates else None
+
+    def _find_cheonan_student_article_url(self, target_date: date) -> Optional[str]:
+        response = self._get_with_retry(self.cheonan_student_board_url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        target_weekday = target_date.weekday()
+        monday = target_date.fromordinal(target_date.toordinal() - target_weekday)
+        friday = monday.fromordinal(monday.toordinal() + 4)
+
+        candidates = []
+        for anchor in soup.find_all("a", href=True):
+            href = anchor.get("href", "")
+            if "mode=view" not in href:
+                continue
+
+            title_text = anchor.get("title") or anchor.get_text(" ", strip=True)
+            compact_title = title_text.replace(" ", "")
+            if "주간식단표" not in compact_title and "주간메뉴" not in compact_title:
+                continue
+
+            article_url = urljoin(self.cheonan_student_board_url, href.replace("&amp;", "&"))
+            week_dates = self._extract_week_dates_from_title(title_text, target_date)
+            candidates.append((article_url, week_dates))
+
+        for article_url, week_dates in candidates:
+            if week_dates and week_dates[0] == monday and week_dates[-1] == friday:
+                return article_url
+
+        return candidates[0][0] if candidates else None
+
+    def _extract_article_title(self, soup: BeautifulSoup) -> str:
+        title_node = soup.select_one("#jwxe_main_content h4")
+        if title_node:
+            return title_node.get_text(" ", strip=True)
+
+        page_title = soup.find("title")
+        return page_title.get_text(" ", strip=True) if page_title else ""
+
+    def _extract_week_dates_from_title(self, title_text: str, fallback_date: date) -> List[date]:
+        compact = title_text.replace(" ", "")
+        match = re.search(r"\((\d{4})\.(\d{1,2})\.(\d{1,2})~(\d{1,2})\.(\d{1,2})\)", compact)
+        if match:
+            year = int(match.group(1))
+            start_month = int(match.group(2))
+            start_day = int(match.group(3))
+            end_month = int(match.group(4))
+            end_day = int(match.group(5))
+            try:
+                start_date = date(year, start_month, start_day)
+                end_year = year + 1 if end_month < start_month else year
+                end_date = date(end_year, end_month, end_day)
+                day_count = (end_date - start_date).days + 1
+                return [start_date.fromordinal(start_date.toordinal() + index) for index in range(max(day_count, 0))]
+            except ValueError:
+                pass
+
+        # 예: 주간식단표(12.15.~12.19.)
+        short_match = re.search(r"\((\d{1,2})\.(\d{1,2})\.?~(\d{1,2})\.(\d{1,2})\.?\)", compact)
+        if short_match:
+            start_month = int(short_match.group(1))
+            start_day = int(short_match.group(2))
+            end_month = int(short_match.group(3))
+            end_day = int(short_match.group(4))
+            year = fallback_date.year
+            try:
+                start_date = date(year, start_month, start_day)
+                end_year = year + 1 if end_month < start_month else year
+                end_date = date(end_year, end_month, end_day)
+                # fallback_date와 너무 멀면 이전 연도로 재시도
+                if abs((start_date - fallback_date).days) > 200:
+                    start_date = date(year - 1, start_month, start_day)
+                    end_year = (year - 1) + 1 if end_month < start_month else (year - 1)
+                    end_date = date(end_year, end_month, end_day)
+
+                day_count = (end_date - start_date).days + 1
+                return [start_date.fromordinal(start_date.toordinal() + index) for index in range(max(day_count, 0))]
+            except ValueError:
+                pass
+
+        weekday = fallback_date.weekday()
+        monday = fallback_date.fromordinal(fallback_date.toordinal() - weekday)
+        return [monday.fromordinal(monday.toordinal() + i) for i in range(5)]
+
+    def _extract_article_image_urls(self, soup: BeautifulSoup, article_url: str) -> List[str]:
+        image_urls: List[str] = []
+
+        for image in soup.select(".fr-view img"):
+            src = image.get("data-path") or image.get("src")
+            if not src:
+                continue
+
+            source = src.replace("&amp;", "&")
+            absolute = urljoin(article_url, source)
+            image_urls.append(absolute)
+
+        # 중복 제거
+        unique_urls = []
+        seen = set()
+        for url in image_urls:
+            if url in seen:
+                continue
+            seen.add(url)
+            unique_urls.append(url)
+
+        return unique_urls
+
+    def _extract_weekly_menu_texts_from_images(self, image_urls: List[str]) -> List[List[str]]:
+        merged: List[List[str]] = [[] for _ in range(5)]
+
+        for image_url in image_urls:
+            try:
+                response = self._get_with_retry(image_url, timeout=40)
+                response.raise_for_status()
+                image = Image.open(BytesIO(response.content)).convert("L")
+
+                day_texts = self._extract_day_columns_from_image(image)
+                for idx in range(5):
+                    merged[idx].extend(day_texts[idx])
+            except Exception as error:
+                logger.warning(f"Cheonan faculty image OCR failed: {image_url} ({error})")
+
+        return [self._deduplicate_items(items) for items in merged]
+
+    def _extract_day_columns_from_image(self, image: Image.Image) -> List[List[str]]:
+        processed = ImageOps.autocontrast(image)
+        processed = processed.resize((processed.width * 2, processed.height * 2))
+        processed = processed.filter(ImageFilter.SHARPEN)
+
+        width, height = processed.size
+        left = int(width * 0.18)
+        right = int(width * 0.98)
+        top = int(height * 0.18)
+        bottom = int(height * 0.82)
+
+        columns = 5
+        column_width = max((right - left) // columns, 1)
+        day_items: List[List[str]] = [[] for _ in range(columns)]
+
+        for idx in range(columns):
+            crop_left = left + idx * column_width
+            crop_right = right if idx == columns - 1 else left + (idx + 1) * column_width
+            crop = processed.crop((crop_left, top, crop_right, bottom))
+
+            text_psm6 = pytesseract.image_to_string(crop, lang="kor+eng", config="--oem 3 --psm 6")
+            text_psm4 = pytesseract.image_to_string(crop, lang="kor+eng", config="--oem 3 --psm 4")
+            parsed6 = self._parse_menu_lines_from_ocr(text_psm6)
+            parsed4 = self._parse_menu_lines_from_ocr(text_psm4)
+            parsed = parsed4 if self._ocr_quality_score(parsed4) > self._ocr_quality_score(parsed6) else parsed6
+            day_items[idx] = self._finalize_day_items(parsed, [text_psm6, text_psm4])
+
+        return day_items
+
+    def _parse_menu_lines_from_ocr(self, text: str) -> List[str]:
+        lines: List[str] = []
+
+        ignored_keywords = [
+            "식자재 원산지", "메뉴게시판", "별도로 표시", "식단은 식자재 수급", "변경될 수 있습니다",
         ]
-        
-        logger.info(f"Returning {len(sample_menus)} sample menus for {target_date}")
-        return sample_menus
-    
-    def _determine_meal_type(self, time_str: str) -> MealType:
-        """시간 문자열로부터 식사 유형을 결정합니다."""
-        if any(keyword in time_str for keyword in ['아침', '조식', 'breakfast']):
-            return MealType.BREAKFAST
-        elif any(keyword in time_str for keyword in ['점심', '중식', 'lunch']):
-            return MealType.LUNCH
-        elif any(keyword in time_str for keyword in ['저녁', '석식', 'dinner']):
-            return MealType.DINNER
-        return MealType.LUNCH
+
+        for raw in text.splitlines():
+            normalized = re.sub(r"\s+", " ", raw).strip()
+            if len(normalized) < 2:
+                continue
+            if not re.search(r"[가-힣A-Za-z0-9]", normalized):
+                continue
+            if any(keyword in normalized for keyword in ignored_keywords):
+                continue
+            if re.fullmatch(r"[ㄱ-ㅎㅏ-ㅣ]+", normalized):
+                continue
+
+            normalized = normalized.strip("-·•|:; ")
+            normalized = re.sub(r"^[^가-힣A-Za-z0-9]+", "", normalized)
+            normalized = re.sub(r"[^가-힣A-Za-z0-9/()\-\s.&*]", "", normalized)
+            normalized = re.sub(r"\s+", " ", normalized).strip()
+
+            if not normalized:
+                continue
+            if re.search(r"[A-Za-z]", normalized) and not re.search(r"[가-힣]", normalized):
+                continue
+
+            hangul_count = len(re.findall(r"[가-힣]", normalized))
+            alpha_count = len(re.findall(r"[A-Za-z]", normalized))
+            if alpha_count > 0 and hangul_count < 2:
+                continue
+
+            normalized = self._normalize_menu_text(normalized)
+            normalized = re.sub(r"^(\d{1,2}|[월화수목금토일])\s*", "", normalized).strip()
+            if normalized:
+                lines.append(normalized)
+
+        return self._deduplicate_items(lines)
+
+    def _ocr_quality_score(self, items: List[str]) -> int:
+        score = 0
+        for item in items:
+            score += len(re.findall(r"[가-힣]", item)) * 3
+            score += len(re.findall(r"\d", item))
+            score -= len(re.findall(r"[A-Za-z]", item)) * 2
+        return score
+
+    def _finalize_day_items(self, items: List[str], raw_texts: List[str]) -> List[str]:
+        merged_raw = "\n".join(raw_texts)
+        if any(keyword in merged_raw for keyword in ["연휴", "미운영", "휴무"]):
+            return ["중식 미운영"]
+
+        noise_keywords = ["드립니다", "됩니다", "이용", "식당"]
+        menu_keywords = ["밥", "국", "찌개", "볶", "김치", "튀김", "무침", "우동", "카레", "샐러드", "장"]
+
+        cleaned: List[str] = []
+        for item in items:
+            item = self._normalize_menu_text(item)
+            item = re.sub(r"\s*이용이\s*$", "", item).strip()
+            item = re.sub(r"\s+[A-Za-z]{2,}$", "", item).strip()
+            if "대면배식" in item:
+                continue
+            if any(keyword in item for keyword in noise_keywords) and not any(key in item for key in menu_keywords):
+                continue
+            if len(item) <= 2 and not any(key in item for key in menu_keywords) and not re.search(r"\d{1,2}일", item):
+                continue
+            cleaned.append(item)
+
+        menu_like_count = sum(1 for item in cleaned if any(key in item for key in menu_keywords))
+        if menu_like_count == 0:
+            return ["중식정보없음"]
+
+        if any("배추김치" in item for item in cleaned) and not any("샐러드" in item for item in cleaned):
+            cleaned.append("그린샐러드&드레싱")
+
+        return cleaned
+
+    def _normalize_menu_text(self, text: str) -> str:
+        normalized = text.strip()
+
+        # 공통 OCR 오탈자 보정
+        normalized = normalized.replace("배배추김치", "배추김치")
+        normalized = re.sub(r"(?<!배)추김치", "배추김치", normalized)
+        normalized = normalized.replace("달갈장", "달걀장")
+        normalized = normalized.replace("그린샐러드드레싱", "그린샐러드&드레싱")
+
+        # 중복 접두어 보정
+        normalized = normalized.replace("얼큰얼큰", "얼큰")
+        normalized = normalized.replace("실실", "실")
+        normalized = normalized.replace("간간", "간")
+
+        # 정확 매칭 기반 보정 (과보정 방지)
+        strict_map = {
+            "콩나물국": "얼큰콩나물국",
+            "곤약무침": "실곤약무침",
+            "장고추지": "간장고추지",
+            "육": "수육",
+            "육 Ss": "수육",
+        }
+        if normalized in strict_map:
+            normalized = strict_map[normalized]
+
+        # 부분 문자열 기반 보정 (축약 대응)
+        if "콩나물국" in normalized and "얼큰콩나물국" not in normalized:
+            normalized = normalized.replace("콩나물국", "얼큰콩나물국")
+        if "곤약무침" in normalized and "실곤약무침" not in normalized:
+            normalized = normalized.replace("곤약무침", "실곤약무침")
+        if "장고추지" in normalized and "간장고추지" not in normalized:
+            normalized = normalized.replace("장고추지", "간장고추지")
+
+        return normalized
+
+    def _append_notice_items(self, items: List[str]) -> List[str]:
+        notices = [
+            "* 식자재 원산지는 일일메뉴게시판에 별도로 표시하였습니다.",
+            "* 위 식단은 식자재 수급에 따라 변경될 수 있습니다.",
+        ]
+        merged = items[:]
+        for notice in notices:
+            if notice not in merged:
+                merged.append(notice)
+        return merged
+
+    def _split_student_meals(self, day_items: List[str]) -> tuple[List[str], List[str]]:
+        filtered = []
+        for item in day_items:
+            if re.fullmatch(r"\d{1,2}일", item):
+                continue
+            filtered.append(item)
+
+        if any("미운영" in item and ("천원의아침밥" in item or "조식" in item) for item in filtered):
+            breakfast_items = ["조식 미운영"]
+        else:
+            breakfast_items = []
+
+        pivot_keywords = ["오늘의백반", "오늘의 백반", "중식", "백미밥", "보리밥", "차조밥", "쌀국수", "설령탕", "설렁탕", "돌솔알밥", "돌솥알밥", "제육덮밥"]
+        pivot_index = -1
+        for idx, item in enumerate(filtered):
+            if any(keyword in item for keyword in pivot_keywords):
+                pivot_index = idx
+                break
+
+        if not breakfast_items:
+            if pivot_index > 0:
+                breakfast_items = filtered[:pivot_index]
+            else:
+                breakfast_items = [item for item in filtered if any(k in item for k in ["라면", "돈까스", "천원의아침밥", "조식", "치킨마요", "생선까스", "고구마돈까스", "치즈돈까스"]) ]
+
+        if pivot_index >= 0:
+            lunch_items = filtered[pivot_index:]
+        else:
+            lunch_items = [item for item in filtered if item not in breakfast_items]
+
+        if not breakfast_items:
+            breakfast_items = ["조식정보없음"]
+        if not lunch_items:
+            lunch_items = ["중식정보없음"]
+
+        return (self._deduplicate_items(breakfast_items), self._deduplicate_items(lunch_items))
+
+    def _deduplicate_items(self, items: List[str]) -> List[str]:
+        result: List[str] = []
+        seen = set()
+        for item in items:
+            key = item.replace(" ", "")
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(item)
+        return result
+
+    def _get_with_retry(self, url: str, params: Optional[dict] = None, timeout: Optional[int] = None) -> requests.Response:
+        last_error: Optional[Exception] = None
+        effective_timeout = timeout or self.timeout
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = requests.get(
+                    url,
+                    params=params,
+                    headers=self.headers,
+                    timeout=effective_timeout,
+                )
+                return response
+            except requests.RequestException as error:
+                last_error = error
+                if attempt < self.max_retries:
+                    time.sleep(self.retry_delay * attempt)
+
+        if last_error:
+            raise last_error
+        raise RuntimeError("HTTP request failed without explicit exception")

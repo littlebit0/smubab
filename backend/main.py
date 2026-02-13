@@ -1,13 +1,12 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import date, datetime, timedelta
-from typing import List, Optional
-from apscheduler.schedulers.background import BackgroundScheduler
+from typing import Optional
 import logging
 
 from models import (
-    Menu, MenuResponse, DailyMenuResponse, 
-    Restaurant, MealType
+    MenuResponse, DailyMenuResponse,
+    Restaurant
 )
 from crawler import SMUCafeteriaCrawler
 from database import db
@@ -30,49 +29,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 크롤러 인스턴스
 crawler = SMUCafeteriaCrawler()
 
-# 스케줄러 설정
-scheduler = BackgroundScheduler()
 
+def update_menus(target_date: Optional[date] = None):
+    if target_date is None:
+        target_date = date.today()
 
-def update_menus():
-    """메뉴 정보를 업데이트합니다."""
-    logger.info("Updating menus...")
-    try:
-        # 오늘부터 일주일치 메뉴 크롤링
-        menus = crawler.crawl_weekly_menu()
-        saved_count = db.save_menus(menus)
-        logger.info(f"Updated {saved_count} menus")
-        
-        # 7일 이전 데이터 삭제
-        deleted_count = db.clear_old_menus(date.today() - timedelta(days=7))
-        logger.info(f"Deleted {deleted_count} old menus")
-    except Exception as e:
-        logger.error(f"Failed to update menus: {e}")
+    weekday = target_date.weekday()
+    monday = target_date - timedelta(days=weekday)
+    friday = monday + timedelta(days=4)
+
+    menus = crawler.crawl_weekly_menu(target_date)
+    saved_count = db.save_menus(menus)
+    db.clear_old_menus(date.today() - timedelta(days=7))
+    logger.info(f"Updated {saved_count} menus for {monday} ~ {friday}")
 
 
 @app.on_event("startup")
 async def startup_event():
     """서버 시작 시 실행"""
     logger.info("Starting SMU-Bab API server...")
-    
-    # 매일 오전 6시에 메뉴 업데이트
-    scheduler.add_job(update_menus, 'cron', hour=6, minute=0)
-    scheduler.start()
-    
-    # 초기 데이터는 백그라운드에서 로드 (서버 시작 차단 방지)
-    from threading import Thread
-    Thread(target=update_menus, daemon=True).start()
-    
+    update_menus(date.today())
     logger.info("Server started successfully")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """서버 종료 시 실행"""
-    scheduler.shutdown()
     logger.info("Server shutdown")
 
 
@@ -100,13 +84,11 @@ async def get_today_menus():
     """오늘의 메뉴를 조회합니다."""
     today = date.today()
     menus = db.get_daily_menus(today)
-    
+
     if not menus:
-        # 데이터가 없으면 즉시 크롤링
-        logger.info("No menus found, crawling now...")
-        menus = crawler.crawl_daily_menu(today)
-        db.save_menus(menus)
-    
+        update_menus(today)
+        menus = db.get_daily_menus(today)
+
     return DailyMenuResponse(
         success=True,
         date=today,
@@ -119,14 +101,11 @@ async def get_today_menus():
 async def get_menus_by_date(target_date: date):
     """특정 날짜의 메뉴를 조회합니다."""
     menus = db.get_daily_menus(target_date)
-    
+
     if not menus:
-        # 미래 날짜는 크롤링 시도
-        if target_date >= date.today():
-            menus = crawler.crawl_daily_menu(target_date)
-            if menus:
-                db.save_menus(menus)
-    
+        update_menus(target_date)
+        menus = db.get_daily_menus(target_date)
+
     return DailyMenuResponse(
         success=True,
         date=target_date,
@@ -150,12 +129,11 @@ async def get_weekly_menus(
     
     # 데이터베이스에서 조회
     menus = db.get_weekly_menus(monday, friday)
-    
+
     if not menus:
-        # 데이터가 없으면 크롤링
-        menus = crawler.crawl_weekly_menu(target_date)
-        db.save_menus(menus)
-    
+        update_menus(target_date)
+        menus = db.get_weekly_menus(monday, friday)
+
     return MenuResponse(
         success=True,
         data=menus,
@@ -207,7 +185,8 @@ async def get_restaurants():
 async def refresh_menus():
     """메뉴 정보를 강제로 갱신합니다."""
     try:
-        update_menus()
+        db.menus = []
+        update_menus(date.today())
         return {
             "success": True,
             "message": "메뉴 정보가 갱신되었습니다"

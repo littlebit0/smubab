@@ -42,50 +42,12 @@ Expo Go 앱에서 QR 코드를 스캔하여 앱을 실행합니다.
    const API_BASE_URL = 'http://192.168.0.10:8000';  // 자신의 IP로 변경
    ```
 
-## 크롤링 커스터마이징
+## 메뉴 데이터
 
-상명대학교 실제 학식 웹사이트에 맞게 크롤링 로직을 수정해야 합니다.
+백엔드는 외부 수집 기능 없이 내부 기본 메뉴 데이터를 생성하여 제공합니다.
 
-1. 상명대학교 학식 페이지 URL 확인
-2. `backend/crawler.py`의 `SMUCafeteriaCrawler` 클래스 수정:
-   - `cafeteria_url` 변수를 실제 URL로 변경
-   - `_parse_menu()` 메서드 구현
-
-### 크롤링 예시
-
-```python
-def _parse_menu(self, soup: BeautifulSoup, target_date: date) -> List[Menu]:
-    menus = []
-    
-    # 예시: HTML 구조에 맞게 파싱
-    menu_sections = soup.find_all('div', class_='menu-card')
-    
-    for section in menu_sections:
-        restaurant_name = section.find('h3', class_='restaurant').text.strip()
-        
-        # 식사 타입 결정
-        meal_type = self._determine_meal_type(
-            section.find('span', class_='time').text
-        )
-        
-        # 메뉴 아이템 파싱
-        items = []
-        for item in section.find_all('li', class_='menu-item'):
-            name = item.find('span', class_='name').text.strip()
-            price_text = item.find('span', class_='price').text
-            price = int(price_text.replace(',', '').replace('원', ''))
-            
-            items.append(MenuItem(name=name, price=price))
-        
-        menus.append(Menu(
-            date=target_date,
-            restaurant=Restaurant(restaurant_name),
-            meal_type=meal_type,
-            items=items
-        ))
-    
-    return menus
-```
+- 서버 시작 시 해당 주(월~금) 메뉴를 자동 생성합니다.
+- `POST /api/menus/refresh` 호출 시 기본 메뉴를 재생성합니다.
 
 ## 데이터베이스 변경
 
@@ -142,11 +104,10 @@ Expo Application Services (EAS)를 사용하여 빌드하고 앱 스토어에 �
 - 백엔드 서버가 `0.0.0.0`으로 실행 중인지 확인
 - 모바일 기기와 PC가 같은 네트워크에 있는지 확인
 
-### 크롤링 실패
+### 메뉴 데이터가 비어 보일 때
 
-- 웹사이트 구조 변경 확인
-- User-Agent 헤더 확인
-- 필요시 Selenium으로 변경
+- 백엔드 서버 재시작 후 `POST /api/menus/refresh` 호출
+- `GET /api/menus/week` 응답 확인
 
 ## 추가 개선 사항
 

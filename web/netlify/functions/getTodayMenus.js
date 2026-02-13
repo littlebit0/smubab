@@ -1,8 +1,7 @@
 /**
- * 간단한 샘플 데이터로 오늘 메뉴 반환
- * Netlify Functions 테스트용
+ * 백엔드 API를 프록시하여 오늘 메뉴를 반환
  */
-exports.handler = async (event, context) => {
+exports.handler = async (event) => {
     const headers = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type',
@@ -15,66 +14,36 @@ exports.handler = async (event, context) => {
     }
 
     try {
-        console.log('getTodayMenus function called');
+        const apiBaseUrl = process.env.BACKEND_API_URL || process.env.VITE_API_URL;
 
-        const today = new Date();
-        const dateStr = today.toISOString().split('T')[0];
+        if (!apiBaseUrl) {
+            throw new Error('BACKEND_API_URL 또는 VITE_API_URL 환경 변수가 설정되지 않았습니다.');
+        }
 
-        // 간단한 샘플 데이터
-        const menus = [
-            {
-                date: dateStr,
-                restaurant: '서울_학생식당',
-                meal_type: 'lunch',
-                items: [
-                    { name: '잡곡밥', price: null },
-                    { name: '된장찌개', price: null },
-                    { name: '제육볶음', price: null },
-                    { name: '계란찜', price: null },
-                    { name: '배추김치', price: null }
-                ]
-            },
-            {
-                date: dateStr,
-                restaurant: '서울_학생식당',
-                meal_type: 'dinner',
-                items: [
-                    { name: '쌀밥', price: null },
-                    { name: '김치찌개', price: null },
-                    { name: '닭갈비', price: null },
-                    { name: '샐러드', price: null },
-                    { name: '깍두기', price: null }
-                ]
-            },
-            {
-                date: dateStr,
-                restaurant: '천안_학생식당',
-                meal_type: 'lunch',
-                items: [
-                    { name: '잡곡밥', price: null },
-                    { name: '순두부찌개', price: null },
-                    { name: '돈까스', price: null },
-                    { name: '스프', price: null },
-                    { name: '배추김치', price: null }
-                ]
+        const normalizedBaseUrl = apiBaseUrl.replace(/\/$/, '');
+        const upstreamUrl = `${normalizedBaseUrl}/api/menus/today`;
+
+        const response = await fetch(upstreamUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
             }
-        ];
+        });
 
-        console.log(`Returning ${menus.length} sample menus`);
+        if (!response.ok) {
+            throw new Error(`백엔드 응답 오류: ${response.status} ${response.statusText}`);
+        }
+
+        const payload = await response.json();
 
         return {
             statusCode: 200,
             headers,
-            body: JSON.stringify({
-                success: true,
-                date: dateStr,
-                menus: menus
-            })
+            body: JSON.stringify(payload)
         };
-
     } catch (error) {
         console.error('Error in getTodayMenus:', error);
-        
+
         return {
             statusCode: 200,
             headers,

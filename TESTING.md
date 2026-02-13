@@ -127,27 +127,16 @@ cd mobile
 npx tsc --noEmit  # 타입 체크만 실행
 ```
 
-## 크롤링 커스터마이징
+## 메뉴 데이터 재생성
 
-현재는 샘플 데이터를 반환합니다. 실제 상명대학교 웹사이트에 맞게 수정하려면:
+백엔드는 외부 수집 기능 없이 내부 기본 메뉴 데이터를 사용합니다.
 
-1. 상명대학교 학식 페이지 URL 찾기
-2. `backend/crawler.py`의 `cafeteria_url` 변경
-3. HTML 구조 분석
-4. `_parse_menu()` 메서드 구현
+```bash
+# 기본 데이터 재생성
+curl -X POST http://localhost:8000/api/menus/refresh
 
-```python
-def _parse_menu(self, soup: BeautifulSoup, target_date: date) -> List[Menu]:
-    menus = []
-    
-    # 실제 HTML 구조에 맞게 수정
-    menu_sections = soup.find_all('div', class_='menu-section')
-    
-    for section in menu_sections:
-        # 파싱 로직 구현
-        pass
-    
-    return menus
+# 생성 확인
+curl http://localhost:8000/api/menus/week
 ```
 
 ## 성능 테스트

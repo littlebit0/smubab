@@ -4,9 +4,8 @@
 
 ## 기능
 
-- 상명대학교 학식 웹사이트 크롤링
 - RESTful API 제공
-- 자동 메뉴 업데이트 (매일 오전 6시)
+- 서울캠퍼스 식단 페이지 크롤링
 - 식당별, 날짜별 메뉴 조회
 
 ## 설치
@@ -47,11 +46,12 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-## 크롤링 커스터마이징
+## 메뉴 데이터 정책
 
-`crawler.py`의 `SMUCafeteriaCrawler` 클래스를 수정하여 실제 상명대학교 웹사이트 구조에 맞게 크롤링 로직을 구현하세요.
+서울캠퍼스 식단은 `https://www.smu.ac.kr/kor/life/restaurantView.do`에서 텍스트 기반으로 수집합니다.
 
-현재는 샘플 데이터를 반환하도록 되어 있습니다.
+- 조식 데이터가 비어 있으면 `조식제공X`로 표시합니다.
+- 중식은 페이지의 식단표를 그대로 파싱합니다.
 
 ## 데이터베이스
 
