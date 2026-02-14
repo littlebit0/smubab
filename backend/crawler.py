@@ -9,7 +9,13 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 from PIL import Image, ImageOps, ImageFilter
-import pytesseract
+
+# Optional tesseract import
+try:
+    import pytesseract
+    TESSERACT_AVAILABLE = True
+except (ImportError, Exception):
+    TESSERACT_AVAILABLE = False
 
 from models import MealType, Menu, MenuItem, Restaurant
 
@@ -449,6 +455,10 @@ class SMUCafeteriaCrawler:
         return [self._deduplicate_items(items) for items in merged]
 
     def _extract_day_columns_from_image(self, image: Image.Image) -> List[List[str]]:
+        if not TESSERACT_AVAILABLE:
+            logger.warning("Tesseract not available, returning empty menu items")
+            return [["중식정보없음"] for _ in range(5)]
+        
         processed = ImageOps.autocontrast(image)
         processed = processed.resize((processed.width * 2, processed.height * 2))
         processed = processed.filter(ImageFilter.SHARPEN)

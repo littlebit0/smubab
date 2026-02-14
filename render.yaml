@@ -1,9 +1,10 @@
 services:
   - type: web
     name: smubab-api
-    runtime: docker
+    runtime: python
     rootDir: backend
-    dockerfilePath: ./Dockerfile
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PORT
-        value: 8000
+      - key: PYTHON_VERSION
+        value: 3.11.11
