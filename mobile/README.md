@@ -52,7 +52,7 @@ npm run ios
 
 ## 백엔드 연결
 
-`src/api/menuAPI.ts` 파일에서 API 서버 주소를 설정하세요.
+`src/api/menuAPI.ts`에서 API 서버 주소를 설정합니다.
 
 개발 시에는 로컬 네트워크 IP 주소를 사용해야 합니다:
 
@@ -63,6 +63,8 @@ const API_BASE_URL = 'http://192.168.0.10:8000';  // 자신의 IP로 변경
 자신의 IP 주소 확인:
 - Windows: `ipconfig`
 - Mac/Linux: `ifconfig` 또는 `ip addr`
+
+프로덕션은 `app.json`의 `expo.extra.apiBaseUrl` 또는 환경변수 `EXPO_PUBLIC_API_BASE_URL` 값을 사용합니다.
 
 ## 프로젝트 구조
 
@@ -103,6 +105,34 @@ eas build --platform ios
 ```
 
 EAS Build를 사용하기 위해서는 Expo 계정이 필요합니다.
+
+## App Store 배포 (EAS)
+
+1) Expo 로그인
+
+```bash
+npx expo login
+```
+
+2) EAS 초기화 (projectId 생성)
+
+```bash
+npx eas init
+```
+
+3) iOS 빌드
+
+```bash
+npx eas build --platform ios
+```
+
+4) App Store 제출
+
+```bash
+npx eas submit --platform ios
+```
+
+Apple Developer 계정과 App Store Connect 접근 권한이 필요합니다.
 
 ## 라이선스
 

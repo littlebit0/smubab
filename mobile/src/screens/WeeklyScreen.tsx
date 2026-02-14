@@ -1,17 +1,18 @@
+import { addDays, format, startOfWeek } from 'date-fns';
+import { ko } from 'date-fns/locale';
 import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  ActivityIndicator,
-  TouchableOpacity,
-  Alert,
+    ActivityIndicator,
+    Alert,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    useColorScheme,
+    View,
 } from 'react-native';
-import { menuAPI, Menu } from '../api/menuAPI';
-import { format, addDays, startOfWeek } from 'date-fns';
-import { ko } from 'date-fns/locale';
+import { Menu, menuAPI } from '../api/menuAPI';
+import { AppThemeColors, getThemeColors } from '../theme/colors';
 
 const MEAL_TYPE_NAMES: { [key: string]: string } = {
   breakfast: '아침',
@@ -20,6 +21,10 @@ const MEAL_TYPE_NAMES: { [key: string]: string } = {
 };
 
 export default function WeeklyScreen() {
+  const colorScheme = useColorScheme();
+  const colors = getThemeColors(colorScheme);
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [menus, setMenus] = useState<Menu[]>([]);
@@ -101,7 +106,7 @@ export default function WeeklyScreen() {
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={colors.accent} />
         <Text style={styles.loadingText}>주간 메뉴를 불러오는 중...</Text>
       </View>
     );
@@ -114,7 +119,12 @@ export default function WeeklyScreen() {
     <ScrollView
       style={styles.container}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.accent}
+          colors={[colors.accent]}
+        />
       }
     >
       <View style={styles.header}>
@@ -131,121 +141,122 @@ export default function WeeklyScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
-  },
-  header: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#666',
-  },
-  weekContainer: {
-    padding: 15,
-  },
-  dayCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  dayHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  todayHeader: {
-    borderBottomColor: '#007AFF',
-    borderBottomWidth: 2,
-  },
-  dayText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  todayText: {
-    color: '#007AFF',
-  },
-  todayBadge: {
-    marginLeft: 8,
-    backgroundColor: '#007AFF',
-    color: '#fff',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  mealSection: {
-    marginBottom: 12,
-  },
-  mealHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  mealType: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#007AFF',
-  },
-  restaurant: {
-    fontSize: 14,
-    color: '#666',
-  },
-  itemsList: {
-    gap: 4,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 2,
-  },
-  itemName: {
-    fontSize: 15,
-    color: '#333',
-    flex: 1,
-  },
-  itemPrice: {
-    fontSize: 14,
-    color: '#666',
-  },
-  noMenu: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    paddingVertical: 10,
-  },
-});
+const createStyles = (colors: AppThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    centerContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: colors.background,
+    },
+    loadingText: {
+      marginTop: 10,
+      fontSize: 16,
+      color: colors.textSecondary,
+    },
+    header: {
+      backgroundColor: colors.surface,
+      padding: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    headerTitle: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: colors.textPrimary,
+      marginBottom: 5,
+    },
+    headerSubtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+    },
+    weekContainer: {
+      padding: 15,
+    },
+    dayCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 15,
+      marginBottom: 15,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    dayHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+      paddingBottom: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    todayHeader: {
+      borderBottomColor: colors.accent,
+      borderBottomWidth: 2,
+    },
+    dayText: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.textPrimary,
+    },
+    todayText: {
+      color: colors.accent,
+    },
+    todayBadge: {
+      marginLeft: 8,
+      backgroundColor: colors.accent,
+      color: colors.badgeText,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 10,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    mealSection: {
+      marginBottom: 12,
+    },
+    mealHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    mealType: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.accent,
+    },
+    restaurant: {
+      fontSize: 14,
+      color: colors.textSecondary,
+    },
+    itemsList: {
+      gap: 4,
+    },
+    itemRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingVertical: 2,
+    },
+    itemName: {
+      fontSize: 15,
+      color: colors.textPrimary,
+      flex: 1,
+    },
+    itemPrice: {
+      fontSize: 14,
+      color: colors.textSecondary,
+    },
+    noMenu: {
+      fontSize: 14,
+      color: colors.textMuted,
+      textAlign: 'center',
+      paddingVertical: 10,
+    },
+  });

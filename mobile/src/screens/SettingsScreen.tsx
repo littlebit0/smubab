@@ -1,14 +1,16 @@
+import * as Notifications from 'expo-notifications';
 import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  Switch,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TouchableOpacity,
+    useColorScheme,
+    View,
 } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import { AppThemeColors, getThemeColors } from '../theme/colors';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -19,6 +21,10 @@ Notifications.setNotificationHandler({
 });
 
 export default function SettingsScreen() {
+  const colorScheme = useColorScheme();
+  const colors = getThemeColors(colorScheme);
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [breakfastNotif, setBreakfastNotif] = useState(false);
   const [lunchNotif, setLunchNotif] = useState(false);
@@ -112,6 +118,8 @@ export default function SettingsScreen() {
           </View>
           <Switch
             value={notificationsEnabled}
+            trackColor={{ false: colors.border, true: `${colors.accent}88` }}
+            thumbColor={notificationsEnabled ? colors.accent : colors.surfaceSecondary}
             onValueChange={(value) => {
               if (value) {
                 requestNotificationPermission();
@@ -198,70 +206,71 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  section: {
-    backgroundColor: '#fff',
-    marginTop: 20,
-    paddingVertical: 10,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: '#f5f5f5',
-  },
-  settingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  settingInfo: {
-    flex: 1,
-  },
-  settingLabel: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 4,
-  },
-  settingDescription: {
-    fontSize: 13,
-    color: '#666',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  infoLabel: {
-    fontSize: 16,
-    color: '#333',
-  },
-  infoValue: {
-    fontSize: 16,
-    color: '#666',
-  },
-  linkButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  linkText: {
-    fontSize: 16,
-    color: '#007AFF',
-  },
-});
+const createStyles = (colors: AppThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    section: {
+      backgroundColor: colors.surface,
+      marginTop: 20,
+      paddingVertical: 10,
+    },
+    sectionTitle: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      backgroundColor: colors.surfaceSecondary,
+    },
+    settingRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 15,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    settingInfo: {
+      flex: 1,
+    },
+    settingLabel: {
+      fontSize: 16,
+      color: colors.textPrimary,
+      marginBottom: 4,
+    },
+    settingDescription: {
+      fontSize: 13,
+      color: colors.textSecondary,
+    },
+    infoRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 15,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    infoLabel: {
+      fontSize: 16,
+      color: colors.textPrimary,
+    },
+    infoValue: {
+      fontSize: 16,
+      color: colors.textSecondary,
+    },
+    linkButton: {
+      paddingHorizontal: 20,
+      paddingVertical: 15,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    linkText: {
+      fontSize: 16,
+      color: colors.accent,
+    },
+  });

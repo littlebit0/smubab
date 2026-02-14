@@ -1,8 +1,10 @@
-import axios from 'axios';
+import axios from 'axios/dist/browser/axios.cjs';
+import Constants from 'expo-constants';
 
-// 개발 시에는 로컬 IP로 변경 필요
-// 예: http://192.168.0.10:8000
-const API_BASE_URL = 'http://localhost:8000';
+const fallbackBaseUrl = 'https://smubab1.onrender.com';
+const envBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+const extraBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl as string | undefined;
+const API_BASE_URL = (envBaseUrl || extraBaseUrl || fallbackBaseUrl).replace(/\/$/, '');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -53,9 +55,9 @@ export const menuAPI = {
   },
 
   // 주간 메뉴
-  getWeeklyMenus: async (startDate?: string): Promise<MenuResponse> => {
-    const url = startDate 
-      ? `/api/menus/week?start_date=${startDate}`
+  getWeeklyMenus: async (targetDate?: string): Promise<MenuResponse> => {
+    const url = targetDate 
+      ? `/api/menus/week?target_date=${targetDate}`
       : '/api/menus/week';
     const response = await api.get<MenuResponse>(url);
     return response.data;

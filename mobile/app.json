@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -39,6 +39,13 @@
           "color": "#ffffff"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "apiBaseUrl": "https://smubab1.onrender.com",
+      "eas": {
+        "projectId": "dbbc9128-43d1-484b-b479-c7347108da58"
+      }
+    },
+    "owner": "kimhee8953"
   }
 }

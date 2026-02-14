@@ -1,20 +1,52 @@
 import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
+import { useColorScheme } from 'react-native';
 
 import SettingsScreen from './src/screens/SettingsScreen';
 import TodayScreen from './src/screens/TodayScreen';
 import WeeklyScreen from './src/screens/WeeklyScreen';
+import { getThemeColors } from './src/theme/colors';
 
 const Tab = createBottomTabNavigator();
 
 export default function App() {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const colors = getThemeColors(colorScheme);
+
+  const navigationTheme = isDark
+    ? {
+        ...DarkTheme,
+        colors: {
+          ...DarkTheme.colors,
+          primary: colors.accent,
+          background: colors.background,
+          card: colors.surface,
+          text: colors.textPrimary,
+          border: colors.border,
+          notification: colors.accent,
+        },
+      }
+    : {
+        ...DefaultTheme,
+        colors: {
+          ...DefaultTheme.colors,
+          primary: colors.accent,
+          background: colors.background,
+          card: colors.surface,
+          text: colors.textPrimary,
+          border: colors.border,
+          notification: colors.accent,
+        },
+      };
+
   return (
     <>
-      <StatusBar style="auto" />
-      <NavigationContainer>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <NavigationContainer theme={navigationTheme}>
         <Tab.Navigator
           screenOptions={({ route }) => ({
             tabBarIcon: ({ focused, color, size }) => {
@@ -30,12 +62,16 @@ export default function App() {
 
               return <Ionicons name={iconName} size={size} color={color} />;
             },
-            tabBarActiveTintColor: '#007AFF',
-            tabBarInactiveTintColor: 'gray',
-            headerStyle: {
-              backgroundColor: '#007AFF',
+            tabBarActiveTintColor: colors.accent,
+            tabBarInactiveTintColor: colors.tabInactive,
+            tabBarStyle: {
+              backgroundColor: colors.surface,
+              borderTopColor: colors.border,
             },
-            headerTintColor: '#fff',
+            headerStyle: {
+              backgroundColor: colors.surface,
+            },
+            headerTintColor: colors.textPrimary,
             headerTitleStyle: {
               fontWeight: 'bold',
             },
