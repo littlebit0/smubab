@@ -25,7 +25,7 @@ Netlify 사이트 설정에서:
 4. 설정:
    - **Name**: smubab-api
    - **Root Directory**: `backend`
-   - **Build Command**: `pip install -r requirements.txt`
+    - **Build Command**: `apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-kor && pip install -r requirements.txt`
    - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
    - **Instance Type**: Free
 

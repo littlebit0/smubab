@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import date, datetime, timedelta
 from typing import Optional
+import threading
 import logging
 
 from models import (
@@ -30,6 +31,8 @@ app.add_middleware(
 )
 
 crawler = SMUCafeteriaCrawler()
+_update_lock = threading.Lock()
+_is_updating = False
 
 
 def update_menus(target_date: Optional[date] = None):
@@ -46,11 +49,33 @@ def update_menus(target_date: Optional[date] = None):
     logger.info(f"Updated {saved_count} menus for {monday} ~ {friday}")
 
 
+def trigger_update_menus(target_date: Optional[date] = None) -> bool:
+    global _is_updating
+    with _update_lock:
+        if _is_updating:
+            return False
+        _is_updating = True
+
+    def _task():
+        global _is_updating
+        try:
+            update_menus(target_date)
+        except Exception as error:
+            logger.warning(f"Menu update failed: {error}")
+        finally:
+            with _update_lock:
+                _is_updating = False
+
+    thread = threading.Thread(target=_task, daemon=True)
+    thread.start()
+    return True
+
+
 @app.on_event("startup")
 async def startup_event():
     """서버 시작 시 실행"""
     logger.info("Starting SMU-Bab API server...")
-    update_menus(date.today())
+    trigger_update_menus(date.today())
     logger.info("Server started successfully")
 
 
@@ -86,8 +111,13 @@ async def get_today_menus():
     menus = db.get_daily_menus(today)
 
     if not menus:
-        update_menus(today)
-        menus = db.get_daily_menus(today)
+        trigger_update_menus(today)
+        return DailyMenuResponse(
+            success=False,
+            date=today,
+            menus=[],
+            error="메뉴 업데이트 중입니다. 잠시 후 다시 시도해 주세요.",
+        )
 
     return DailyMenuResponse(
         success=True,
@@ -103,8 +133,13 @@ async def get_menus_by_date(target_date: date):
     menus = db.get_daily_menus(target_date)
 
     if not menus:
-        update_menus(target_date)
-        menus = db.get_daily_menus(target_date)
+        trigger_update_menus(target_date)
+        return DailyMenuResponse(
+            success=False,
+            date=target_date,
+            menus=[],
+            error="메뉴 업데이트 중입니다. 잠시 후 다시 시도해 주세요.",
+        )
 
     return DailyMenuResponse(
         success=True,
@@ -131,8 +166,12 @@ async def get_weekly_menus(
     menus = db.get_weekly_menus(monday, friday)
 
     if not menus:
-        update_menus(target_date)
-        menus = db.get_weekly_menus(monday, friday)
+        trigger_update_menus(target_date)
+        return MenuResponse(
+            success=False,
+            data=[],
+            error="메뉴 업데이트 중입니다. 잠시 후 다시 시도해 주세요.",
+        )
 
     return MenuResponse(
         success=True,

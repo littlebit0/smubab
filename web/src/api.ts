@@ -1,10 +1,11 @@
 import axios from 'axios';
 
-// Netlify Functions를 우선 사용, 없으면 백엔드 API 사용
-// 개발 환경: 프록시를 통해 백엔드 또는 Functions 접근
-// 프로덕션 환경: /.netlify/functions/ 경로 사용
-const isNetlifyProduction = import.meta.env.PROD;
-const API_BASE_URL = isNetlifyProduction ? '' : (import.meta.env.VITE_API_URL || '');
+// 기본은 백엔드 API 사용, Netlify Functions는 명시적으로만 사용
+// 프로덕션 환경에서도 VITE_API_URL이 있으면 해당 API를 사용
+const isProduction = import.meta.env.PROD;
+const apiBaseUrl = import.meta.env.VITE_API_URL || '';
+const useNetlifyFunctions = isProduction && !apiBaseUrl;
+const API_BASE_URL = apiBaseUrl;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -43,7 +44,7 @@ export interface MenuResponse {
 export const menuAPI = {
   getTodayMenus: async (): Promise<DailyMenuResponse> => {
     // Netlify Functions 사용
-    const url = isNetlifyProduction 
+    const url = useNetlifyFunctions
       ? '/.netlify/functions/getTodayMenus'
       : '/api/menus/today';
     const response = await api.get<DailyMenuResponse>(url);
@@ -57,7 +58,7 @@ export const menuAPI = {
 
   getWeeklyMenus: async (targetDate?: string): Promise<MenuResponse> => {
     // Netlify Functions 사용
-    const url = isNetlifyProduction
+    const url = useNetlifyFunctions
       ? '/.netlify/functions/getWeeklyMenus'
       : (targetDate 
         ? `/api/menus/week?target_date=${targetDate}`
