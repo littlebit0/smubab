@@ -1,6 +1,8 @@
 import logging
+import os
 import re
 import time
+import base64
 from datetime import date
 from io import BytesIO
 from typing import List, Optional
@@ -35,6 +37,7 @@ class SMUCafeteriaCrawler:
         self.timeout = 20
         self.max_retries = 3
         self.retry_delay = 1.5
+        self.ocr_space_api_key = os.getenv("OCR_SPACE_API_KEY", "")
 
     def crawl_daily_menu(self, target_date: date) -> List[Menu]:
         weekly_menus = self.crawl_weekly_menu(target_date)
@@ -454,9 +457,49 @@ class SMUCafeteriaCrawler:
 
         return [self._deduplicate_items(items) for items in merged]
 
+    def _ocr_with_api(self, image: Image.Image) -> str:
+        """OCR.space API를 사용한 OCR"""
+        if not self.ocr_space_api_key:
+            return ""
+        
+        try:
+            # 이미지를 base64로 변환
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
+            img_base64 = base64.b64encode(buffer.getvalue()).decode()
+            
+            # OCR.space API 호출
+            response = requests.post(
+                "https://api.ocr.space/parse/image",
+                data={
+                    "apikey": self.ocr_space_api_key,
+                    "base64Image": f"data:image/png;base64,{img_base64}",
+                    "language": "kor",
+                    "isOverlayRequired": False,
+                    "detectOrientation": True,
+                    "scale": True,
+                    "OCREngine": 2,
+                },
+                timeout=30,
+            )
+            
+            result = response.json()
+            if result.get("IsErroredOnProcessing"):
+                logger.warning(f"OCR.space API error: {result.get('ErrorMessage')}")
+                return ""
+            
+            parsed_results = result.get("ParsedResults", [])
+            if parsed_results:
+                return parsed_results[0].get("ParsedText", "")
+            
+            return ""
+        except Exception as error:
+            logger.warning(f"OCR.space API failed: {error}")
+            return ""
+
     def _extract_day_columns_from_image(self, image: Image.Image) -> List[List[str]]:
-        if not TESSERACT_AVAILABLE:
-            logger.warning("Tesseract not available, returning empty menu items")
+        if not TESSERACT_AVAILABLE and not self.ocr_space_api_key:
+            logger.warning("No OCR method available (tesseract or API key)")
             return [["중식정보없음"] for _ in range(5)]
         
         processed = ImageOps.autocontrast(image)
@@ -478,12 +521,19 @@ class SMUCafeteriaCrawler:
             crop_right = right if idx == columns - 1 else left + (idx + 1) * column_width
             crop = processed.crop((crop_left, top, crop_right, bottom))
 
-            text_psm6 = pytesseract.image_to_string(crop, lang="kor+eng", config="--oem 3 --psm 6")
-            text_psm4 = pytesseract.image_to_string(crop, lang="kor+eng", config="--oem 3 --psm 4")
-            parsed6 = self._parse_menu_lines_from_ocr(text_psm6)
-            parsed4 = self._parse_menu_lines_from_ocr(text_psm4)
-            parsed = parsed4 if self._ocr_quality_score(parsed4) > self._ocr_quality_score(parsed6) else parsed6
-            day_items[idx] = self._finalize_day_items(parsed, [text_psm6, text_psm4])
+            if TESSERACT_AVAILABLE:
+                # Use local tesseract
+                text_psm6 = pytesseract.image_to_string(crop, lang="kor+eng", config="--oem 3 --psm 6")
+                text_psm4 = pytesseract.image_to_string(crop, lang="kor+eng", config="--oem 3 --psm 4")
+                parsed6 = self._parse_menu_lines_from_ocr(text_psm6)
+                parsed4 = self._parse_menu_lines_from_ocr(text_psm4)
+                parsed = parsed4 if self._ocr_quality_score(parsed4) > self._ocr_quality_score(parsed6) else parsed6
+                day_items[idx] = self._finalize_day_items(parsed, [text_psm6, text_psm4])
+            else:
+                # Use OCR.space API
+                text_api = self._ocr_with_api(crop)
+                parsed_api = self._parse_menu_lines_from_ocr(text_api)
+                day_items[idx] = self._finalize_day_items(parsed_api, [text_api])
 
         return day_items
 

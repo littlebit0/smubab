@@ -25,11 +25,20 @@ Netlify 사이트 설정에서:
 4. 설정:
    - **Name**: smubab-api
    - **Root Directory**: `backend`
-    - **Build Command**: `apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-kor && pip install -r requirements.txt`
+    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
    - **Instance Type**: Free
 
-5. 배포 후 URL을 Netlify 환경 변수(`VITE_API_URL`)에 설정
+5. 환경 변수 설정 (Environment Variables):
+   - **웹 푸시 알림용** (선택):
+     - `VAPID_PUBLIC_KEY`: 생성된 VAPID 공개키
+     - `VAPID_PRIVATE_KEY`: 생성된 VAPID 비공개키
+     - `VAPID_CLAIMS_SUB`: `mailto:your-email@example.com`
+   - **천안캠 OCR용** (선택, Free 플랜에서 필수):
+     - `OCR_SPACE_API_KEY`: [OCR.space](https://ocr.space/ocrapi)에서 무료 발급
+     - 이 키가 없으면 천안캠 교직원/학생 식당 메뉴는 "정보없음"으로 표시됨
+
+6. 배포 후 URL을 Netlify 환경 변수(`VITE_API_URL`)에 설정
 
 ### Railway.app 사용 예시
 1. [Railway](https://railway.app/) 로그인
