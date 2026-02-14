@@ -19,15 +19,20 @@ self.addEventListener('push', (event) => {
         tag: payload.tag || 'smubab-update',
     };
 
-    event.waitUntil(self.registration.showNotification(title, options));
+    const showPromise = self.registration.showNotification(title, options)
+        .catch((error) => {
+            console.error('showNotification failed:', error);
+        });
+
+    event.waitUntil(showPromise);
 });
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     const targetUrl = event.notification?.data?.url || '/';
 
-    event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+    const clickPromise = clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then((windowClients) => {
             for (const client of windowClients) {
                 if ('focus' in client) {
                     client.navigate(targetUrl);
@@ -39,5 +44,9 @@ self.addEventListener('notificationclick', (event) => {
             }
             return undefined;
         })
-    );
+        .catch((error) => {
+            console.error('notificationclick failed:', error);
+        });
+
+    event.waitUntil(clickPromise);
 });
