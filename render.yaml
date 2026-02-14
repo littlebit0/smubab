@@ -1,10 +1,9 @@
 services:
   - type: web
     name: smubab-api
-    runtime: python
+    runtime: docker
     rootDir: backend
-    buildCommand: apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-kor && pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.11
+      - key: PORT
+        value: 8000
