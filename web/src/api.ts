@@ -6,6 +6,7 @@ const isProduction = import.meta.env.PROD;
 const apiBaseUrl = import.meta.env.VITE_API_URL || '';
 const pushApiBaseUrl = import.meta.env.VITE_PUSH_API_URL || apiBaseUrl || '';
 const useNetlifyFunctions = isProduction && !apiBaseUrl;
+const useNetlifyPushFunctions = isProduction && !pushApiBaseUrl;
 const API_BASE_URL = apiBaseUrl;
 
 const api = axios.create({
@@ -94,32 +95,38 @@ export const menuAPI = {
 };
 
 export const pushAPI = {
-  isConfigured: () => !!pushApiBaseUrl,
+  isConfigured: () => !!pushApiBaseUrl || useNetlifyPushFunctions,
 
   getPublicKey: async (): Promise<string | null> => {
-    if (!pushApiBaseUrl) return null;
-    const response = await pushApi.get<{ success: boolean; publicKey?: string | null }>(
-      '/api/push/public-key'
-    );
+    const response = useNetlifyPushFunctions
+      ? await api.get<{ success: boolean; publicKey?: string | null }>(
+        '/.netlify/functions/getPushPublicKey'
+      )
+      : await pushApi.get<{ success: boolean; publicKey?: string | null }>(
+        '/api/push/public-key'
+      );
     if (!response.data?.success) return null;
     return response.data.publicKey || null;
   },
 
   subscribe: async (subscription: PushSubscriptionPayload) => {
-    if (!pushApiBaseUrl) throw new Error('Push API URL is not configured');
-    const response = await pushApi.post('/api/push/subscribe', { subscription });
+    const response = useNetlifyPushFunctions
+      ? await api.post('/.netlify/functions/subscribePush', { subscription })
+      : await pushApi.post('/api/push/subscribe', { subscription });
     return response.data;
   },
 
   unsubscribe: async (endpoint: string) => {
-    if (!pushApiBaseUrl) return { success: false, removed: false };
-    const response = await pushApi.post('/api/push/unsubscribe', { endpoint });
+    const response = useNetlifyPushFunctions
+      ? await api.post('/.netlify/functions/unsubscribePush', { endpoint })
+      : await pushApi.post('/api/push/unsubscribe', { endpoint });
     return response.data;
   },
 
   sendTestPush: async () => {
-    if (!pushApiBaseUrl) throw new Error('Push API URL is not configured');
-    const response = await pushApi.post('/api/push/test');
+    const response = useNetlifyPushFunctions
+      ? await api.post('/.netlify/functions/testPush')
+      : await pushApi.post('/api/push/test');
     return response.data as {
       success: boolean;
       message: string;

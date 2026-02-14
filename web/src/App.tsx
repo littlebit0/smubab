@@ -37,8 +37,7 @@ function App() {
     }
 
     if (!standalone) {
-      setPushStatusText('홈 화면에 추가한 뒤 알림을 켤 수 있습니다.')
-      return
+      setPushStatusText('브라우저에서도 알림을 켤 수 있습니다.')
     }
 
     if (!pushAPI.isConfigured()) {
@@ -69,8 +68,7 @@ function App() {
     }
 
     if (!standalone) {
-      setPushStatusText('먼저 Safari에서 홈 화면에 추가해 주세요.')
-      return
+      setPushStatusText('브라우저에서 알림 설정을 진행합니다.')
     }
 
     try {
@@ -110,8 +108,8 @@ function App() {
   }
 
   const sendTestPushNotification = async () => {
-    if (!standalone || !pushSupported || Notification.permission !== 'granted') {
-      setPushStatusText('테스트 알림은 홈 화면 앱 + 알림 허용 상태에서만 가능합니다.')
+    if (!pushSupported || Notification.permission !== 'granted') {
+      setPushStatusText('테스트 알림은 알림 허용 상태에서만 가능합니다.')
       return
     }
 
@@ -328,7 +326,7 @@ function App() {
       )}
 
       <footer className="app-footer">
-        {standalone && pushSupported && showPushPrompt && (
+        {pushSupported && showPushPrompt && (
           <button
             className="push-btn"
             onClick={enablePushNotifications}
@@ -337,7 +335,7 @@ function App() {
             {isSubscribingPush ? '🔔 설정 중...' : '🔔 메뉴 업데이트 알림 켜기'}
           </button>
         )}
-        {standalone && pushSupported && Notification.permission === 'granted' && (
+        {pushSupported && Notification.permission === 'granted' && (
           <button
             className="test-push-btn"
             onClick={sendTestPushNotification}
