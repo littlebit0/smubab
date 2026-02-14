@@ -50,3 +50,22 @@ class DailyMenuResponse(BaseModel):
     date: date
     menus: List[Menu]
     message: Optional[str] = None
+
+
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscription(BaseModel):
+    endpoint: str
+    expirationTime: Optional[int] = None
+    keys: PushSubscriptionKeys
+
+
+class PushSubscribeRequest(BaseModel):
+    subscription: PushSubscription
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str

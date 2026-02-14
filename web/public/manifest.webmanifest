@@ -1,0 +1,10 @@
+{
+    "name": "SMU-Bab",
+    "short_name": "SMU-Bab",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#007AFF",
+    "lang": "ko-KR",
+    "description": "상명대학교 학식 정보를 확인하세요"
+}

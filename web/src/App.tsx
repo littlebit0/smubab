@@ -1,8 +1,9 @@
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { useEffect, useState } from 'react'
-import { Menu, menuAPI } from './api'
+import { Menu, menuAPI, pushAPI } from './api'
 import './App.css'
+import { isPushSupported, isStandaloneMode, urlBase64ToUint8Array } from './push'
 
 const MEAL_TYPE_NAMES: { [key: string]: string } = {
   breakfast: '아침',
@@ -17,10 +18,115 @@ function App() {
   const [date, setDate] = useState(new Date())
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>('서울_학생식당')
   const [error, setError] = useState<string | null>(null)
+  const [pushStatusText, setPushStatusText] = useState<string>('')
+  const [showPushPrompt, setShowPushPrompt] = useState(false)
+  const [isSubscribingPush, setIsSubscribingPush] = useState(false)
+  const [isSendingTestPush, setIsSendingTestPush] = useState(false)
+
+  const standalone = isStandaloneMode()
+  const pushSupported = isPushSupported()
 
   useEffect(() => {
     loadMenus()
   }, [view])
+
+  useEffect(() => {
+    if (!pushSupported) {
+      setPushStatusText('이 브라우저는 웹 푸시를 지원하지 않습니다.')
+      return
+    }
+
+    if (!standalone) {
+      setPushStatusText('홈 화면에 추가한 뒤 알림을 켤 수 있습니다.')
+      return
+    }
+
+    if (!pushAPI.isConfigured()) {
+      setPushStatusText('서버 푸시 설정이 아직 준비되지 않았습니다.')
+      return
+    }
+
+    if (Notification.permission === 'granted') {
+      setPushStatusText('메뉴 업데이트 알림이 활성화되어 있습니다.')
+      setShowPushPrompt(false)
+      return
+    }
+
+    if (Notification.permission === 'denied') {
+      setPushStatusText('알림이 차단되어 있습니다. Safari 설정에서 허용해 주세요.')
+      setShowPushPrompt(false)
+      return
+    }
+
+    setPushStatusText('학식 메뉴 업데이트 알림을 켜주세요.')
+    setShowPushPrompt(true)
+  }, [pushSupported, standalone])
+
+  const enablePushNotifications = async () => {
+    if (!pushSupported) {
+      setPushStatusText('이 브라우저는 웹 푸시를 지원하지 않습니다.')
+      return
+    }
+
+    if (!standalone) {
+      setPushStatusText('먼저 Safari에서 홈 화면에 추가해 주세요.')
+      return
+    }
+
+    try {
+      setIsSubscribingPush(true)
+
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') {
+        setPushStatusText('알림 권한이 허용되지 않았습니다.')
+        return
+      }
+
+      const publicKey = await pushAPI.getPublicKey()
+      if (!publicKey) {
+        setPushStatusText('서버 푸시 공개키가 설정되지 않았습니다.')
+        return
+      }
+
+      const registration = await navigator.serviceWorker.ready
+      let subscription = await registration.pushManager.getSubscription()
+
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        })
+      }
+
+      await pushAPI.subscribe(subscription.toJSON() as any)
+      setPushStatusText('메뉴 업데이트 알림이 활성화되었습니다.')
+      setShowPushPrompt(false)
+    } catch (error) {
+      console.error('Failed to enable push notifications:', error)
+      setPushStatusText('알림 설정에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setIsSubscribingPush(false)
+    }
+  }
+
+  const sendTestPushNotification = async () => {
+    if (!standalone || !pushSupported || Notification.permission !== 'granted') {
+      setPushStatusText('테스트 알림은 홈 화면 앱 + 알림 허용 상태에서만 가능합니다.')
+      return
+    }
+
+    try {
+      setIsSendingTestPush(true)
+      const result = await pushAPI.sendTestPush()
+      setPushStatusText(result.message)
+    } catch (error: any) {
+      console.error('Failed to send test push:', error)
+      const message = error?.response?.data?.detail || '테스트 알림 요청에 실패했습니다.'
+      setPushStatusText(message)
+    } finally {
+      setIsSendingTestPush(false)
+    }
+  }
 
   const loadMenus = async () => {
     try {
@@ -222,6 +328,25 @@ function App() {
       )}
 
       <footer className="app-footer">
+        {standalone && pushSupported && showPushPrompt && (
+          <button
+            className="push-btn"
+            onClick={enablePushNotifications}
+            disabled={isSubscribingPush}
+          >
+            {isSubscribingPush ? '🔔 설정 중...' : '🔔 메뉴 업데이트 알림 켜기'}
+          </button>
+        )}
+        {standalone && pushSupported && Notification.permission === 'granted' && (
+          <button
+            className="test-push-btn"
+            onClick={sendTestPushNotification}
+            disabled={isSendingTestPush}
+          >
+            {isSendingTestPush ? '⏳ 테스트 예약 중...' : '🧪 테스트 알림 (10초 후)'}
+          </button>
+        )}
+        {pushStatusText && <p className="push-status">{pushStatusText}</p>}
         <button className="refresh-btn" onClick={loadMenus}>
           🔄 새로고침
         </button>

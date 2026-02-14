@@ -38,6 +38,14 @@ npm run preview
 - 🍽️ 식당별 메뉴 구분
 - 💰 가격 정보
 - 🔄 메뉴 새로고침
+- 🔔 홈 화면 앱(iOS Safari) 웹 푸시 알림
+
+## 웹 푸시 알림 설정
+
+1. `VITE_PUSH_API_URL`(또는 `VITE_API_URL`)을 백엔드 주소로 설정
+2. 백엔드에 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_CLAIMS_SUB` 설정
+3. iOS Safari에서 사이트를 홈 화면에 추가 후 앱 실행
+4. 앱 하단의 "메뉴 업데이트 알림 켜기" 버튼으로 권한 허용
 
 ## 배포
 

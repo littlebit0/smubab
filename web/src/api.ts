@@ -4,12 +4,18 @@ import axios from 'axios';
 // 프로덕션 환경에서도 VITE_API_URL이 있으면 해당 API를 사용
 const isProduction = import.meta.env.PROD;
 const apiBaseUrl = import.meta.env.VITE_API_URL || '';
+const pushApiBaseUrl = import.meta.env.VITE_PUSH_API_URL || apiBaseUrl || '';
 const useNetlifyFunctions = isProduction && !apiBaseUrl;
 const API_BASE_URL = apiBaseUrl;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000, // Functions는 더 오래 걸릴 수 있음
+});
+
+const pushApi = axios.create({
+  baseURL: pushApiBaseUrl,
+  timeout: 10000,
 });
 
 export interface MenuItem {
@@ -39,6 +45,15 @@ export interface MenuResponse {
   data: Menu[];
   message?: string;
   error?: string;
+}
+
+export interface PushSubscriptionPayload {
+  endpoint: string;
+  expirationTime: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
 }
 
 export const menuAPI = {
@@ -75,6 +90,42 @@ export const menuAPI = {
   refreshMenus: async () => {
     const response = await api.post('/api/menus/refresh');
     return response.data;
+  },
+};
+
+export const pushAPI = {
+  isConfigured: () => !!pushApiBaseUrl,
+
+  getPublicKey: async (): Promise<string | null> => {
+    if (!pushApiBaseUrl) return null;
+    const response = await pushApi.get<{ success: boolean; publicKey?: string | null }>(
+      '/api/push/public-key'
+    );
+    if (!response.data?.success) return null;
+    return response.data.publicKey || null;
+  },
+
+  subscribe: async (subscription: PushSubscriptionPayload) => {
+    if (!pushApiBaseUrl) throw new Error('Push API URL is not configured');
+    const response = await pushApi.post('/api/push/subscribe', { subscription });
+    return response.data;
+  },
+
+  unsubscribe: async (endpoint: string) => {
+    if (!pushApiBaseUrl) return { success: false, removed: false };
+    const response = await pushApi.post('/api/push/unsubscribe', { endpoint });
+    return response.data;
+  },
+
+  sendTestPush: async () => {
+    if (!pushApiBaseUrl) throw new Error('Push API URL is not configured');
+    const response = await pushApi.post('/api/push/test');
+    return response.data as {
+      success: boolean;
+      message: string;
+      delaySeconds: number;
+      subscriptionCount: number;
+    };
   },
 };
 

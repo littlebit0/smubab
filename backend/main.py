@@ -4,10 +4,17 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 import threading
 import logging
+import os
+import json
+import time
+
+from pywebpush import webpush, WebPushException
 
 from models import (
     MenuResponse, DailyMenuResponse,
-    Restaurant
+    Restaurant,
+    PushSubscribeRequest,
+    PushUnsubscribeRequest,
 )
 from crawler import SMUCafeteriaCrawler
 from database import db
@@ -34,8 +41,79 @@ crawler = SMUCafeteriaCrawler()
 _update_lock = threading.Lock()
 _is_updating = False
 
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_CLAIMS_SUB = os.getenv("VAPID_CLAIMS_SUB", "mailto:admin@smubab.app")
 
-def update_menus(target_date: Optional[date] = None):
+
+def is_push_enabled() -> bool:
+    return bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
+
+
+def send_push_payload(payload: dict):
+    if not is_push_enabled():
+        logger.info("Push disabled: missing VAPID keys")
+        return {"sent": 0, "removed": 0, "total": 0}
+
+    subscriptions = db.get_push_subscriptions()
+    if not subscriptions:
+        return {"sent": 0, "removed": 0, "total": 0}
+
+    removed_count = 0
+    sent_count = 0
+    for subscription in subscriptions:
+        try:
+            webpush(
+                subscription_info=subscription,
+                data=json.dumps(payload, ensure_ascii=False),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_CLAIMS_SUB},
+            )
+            sent_count += 1
+        except WebPushException as error:
+            status_code = getattr(getattr(error, "response", None), "status_code", None)
+            if status_code in (404, 410):
+                endpoint = subscription.get("endpoint")
+                if endpoint and db.remove_push_subscription(endpoint):
+                    removed_count += 1
+            else:
+                logger.warning(f"Push send failed: {error}")
+        except Exception as error:
+            logger.warning(f"Push send failed: {error}")
+
+    logger.info(f"Push sent={sent_count}, removed={removed_count}, total={len(subscriptions)}")
+    return {"sent": sent_count, "removed": removed_count, "total": len(subscriptions)}
+
+
+def send_menu_update_notification(target_date: date, saved_count: int):
+    title = "🍚 학식 메뉴 업데이트"
+    body = f"{target_date} 기준 메뉴가 새로 업데이트되었습니다. ({saved_count}건)"
+    payload = {
+        "title": title,
+        "body": body,
+        "url": "/",
+        "tag": f"menu-update-{target_date.isoformat()}",
+    }
+    send_push_payload(payload)
+
+
+def trigger_test_push_notification(delay_seconds: int = 10):
+    def _task():
+        time.sleep(delay_seconds)
+        payload = {
+            "title": "🔔 테스트 알림",
+            "body": f"버튼 클릭 후 {delay_seconds}초가 지나 테스트 푸시가 도착했습니다.",
+            "url": "/",
+            "tag": f"push-test-{int(time.time())}",
+        }
+        result = send_push_payload(payload)
+        logger.info(f"Test push result: {result}")
+
+    thread = threading.Thread(target=_task, daemon=True)
+    thread.start()
+
+
+def update_menus(target_date: Optional[date] = None, notify: bool = False):
     if target_date is None:
         target_date = date.today()
 
@@ -48,8 +126,11 @@ def update_menus(target_date: Optional[date] = None):
     db.clear_old_menus(date.today() - timedelta(days=7))
     logger.info(f"Updated {saved_count} menus for {monday} ~ {friday}")
 
+    if notify and saved_count > 0:
+        send_menu_update_notification(target_date, saved_count)
 
-def trigger_update_menus(target_date: Optional[date] = None) -> bool:
+
+def trigger_update_menus(target_date: Optional[date] = None, notify: bool = False) -> bool:
     global _is_updating
     with _update_lock:
         if _is_updating:
@@ -59,7 +140,7 @@ def trigger_update_menus(target_date: Optional[date] = None) -> bool:
     def _task():
         global _is_updating
         try:
-            update_menus(target_date)
+            update_menus(target_date, notify)
         except Exception as error:
             logger.warning(f"Menu update failed: {error}")
         finally:
@@ -75,7 +156,7 @@ def trigger_update_menus(target_date: Optional[date] = None) -> bool:
 async def startup_event():
     """서버 시작 시 실행"""
     logger.info("Starting SMU-Bab API server...")
-    trigger_update_menus(date.today())
+    trigger_update_menus(date.today(), notify=False)
     logger.info("Server started successfully")
 
 
@@ -111,7 +192,7 @@ async def get_today_menus():
     menus = db.get_daily_menus(today)
 
     if not menus:
-        trigger_update_menus(today)
+        trigger_update_menus(today, notify=True)
         return DailyMenuResponse(
             success=False,
             date=today,
@@ -133,7 +214,7 @@ async def get_menus_by_date(target_date: date):
     menus = db.get_daily_menus(target_date)
 
     if not menus:
-        trigger_update_menus(target_date)
+        trigger_update_menus(target_date, notify=True)
         return DailyMenuResponse(
             success=False,
             date=target_date,
@@ -166,7 +247,7 @@ async def get_weekly_menus(
     menus = db.get_weekly_menus(monday, friday)
 
     if not menus:
-        trigger_update_menus(target_date)
+        trigger_update_menus(target_date, notify=True)
         return MenuResponse(
             success=False,
             data=[],
@@ -225,13 +306,71 @@ async def refresh_menus():
     """메뉴 정보를 강제로 갱신합니다."""
     try:
         db.menus = []
-        update_menus(date.today())
+        update_menus(date.today(), notify=True)
         return {
             "success": True,
             "message": "메뉴 정보가 갱신되었습니다"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"메뉴 갱신 실패: {str(e)}")
+
+
+@app.get("/api/push/public-key")
+async def get_push_public_key():
+    if not is_push_enabled():
+        return {
+            "success": False,
+            "message": "Push notifications are not configured",
+            "publicKey": None,
+        }
+
+    return {
+        "success": True,
+        "publicKey": VAPID_PUBLIC_KEY,
+    }
+
+
+@app.post("/api/push/subscribe")
+async def subscribe_push(request: PushSubscribeRequest):
+    if not is_push_enabled():
+        raise HTTPException(status_code=503, detail="Push notifications are not configured")
+
+    saved = db.upsert_push_subscription(request.subscription.model_dump())
+    if not saved:
+        raise HTTPException(status_code=400, detail="Invalid subscription")
+
+    return {
+        "success": True,
+        "message": "Push subscription registered",
+    }
+
+
+@app.post("/api/push/unsubscribe")
+async def unsubscribe_push(request: PushUnsubscribeRequest):
+    removed = db.remove_push_subscription(request.endpoint)
+    return {
+        "success": True,
+        "removed": removed,
+    }
+
+
+@app.post("/api/push/test")
+async def send_test_push():
+    if not is_push_enabled():
+        raise HTTPException(status_code=503, detail="Push notifications are not configured")
+
+    subscription_count = len(db.get_push_subscriptions())
+    if subscription_count == 0:
+        raise HTTPException(status_code=400, detail="No push subscriptions registered")
+
+    trigger_test_push_notification(delay_seconds=10)
+
+    return {
+        "success": True,
+        "message": "테스트 알림이 예약되었습니다. 10초 후 도착합니다.",
+        "delaySeconds": 10,
+        "subscriptionCount": subscription_count,
+    }
 
 
 if __name__ == "__main__":

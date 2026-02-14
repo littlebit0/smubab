@@ -9,6 +9,7 @@ class MenuDatabase:
     
     def __init__(self):
         self.menus: List[Menu] = []
+        self.push_subscriptions: List[dict] = []
     
     def save_menus(self, menus: List[Menu]) -> int:
         """메뉴 목록을 저장합니다."""
@@ -65,6 +66,35 @@ class MenuDatabase:
         for menu in old_menus:
             self.menus.remove(menu)
         return len(old_menus)
+
+    def upsert_push_subscription(self, subscription: dict) -> bool:
+        endpoint = subscription.get("endpoint")
+        if not endpoint:
+            return False
+
+        existing = next(
+            (item for item in self.push_subscriptions if item.get("endpoint") == endpoint),
+            None,
+        )
+        if existing:
+            self.push_subscriptions.remove(existing)
+
+        self.push_subscriptions.append(subscription)
+        return True
+
+    def remove_push_subscription(self, endpoint: str) -> bool:
+        existing = next(
+            (item for item in self.push_subscriptions if item.get("endpoint") == endpoint),
+            None,
+        )
+        if not existing:
+            return False
+
+        self.push_subscriptions.remove(existing)
+        return True
+
+    def get_push_subscriptions(self) -> List[dict]:
+        return list(self.push_subscriptions)
 
 
 # 전역 데이터베이스 인스턴스

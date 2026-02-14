@@ -296,6 +296,44 @@
   margin-top: auto;
 }
 
+.push-btn {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 0.65rem 1.2rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-bottom: 0.8rem;
+}
+
+.test-push-btn {
+  background: var(--surface-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0.65rem 1.2rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-bottom: 0.8rem;
+}
+
+.test-push-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.push-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.push-status {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 0.8rem;
+}
+
 .refresh-btn {
   background: var(--accent);
   color: white;

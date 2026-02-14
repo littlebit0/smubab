@@ -39,6 +39,13 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 - `POST /api/menus/refresh` - 메뉴 강제 갱신
 - `GET /api/health` - 헬스 체크
 
+### 웹 푸시 알림
+
+- `GET /api/push/public-key` - 웹 푸시 공개키 조회
+- `POST /api/push/subscribe` - 브라우저 푸시 구독 등록
+- `POST /api/push/unsubscribe` - 브라우저 푸시 구독 해제
+- `POST /api/push/test` - 10초 뒤 테스트 푸시 발송 예약
+
 ## API 문서
 
 서버 실행 후 다음 URL에서 자동 생성된 API 문서를 확인할 수 있습니다:
@@ -56,3 +63,17 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 ## 데이터베이스
 
 현재는 인메모리 데이터베이스를 사용합니다. 프로덕션 환경에서는 SQLite나 PostgreSQL로 교체하는 것을 권장합니다.
+
+## 웹 푸시 환경 변수
+
+웹 푸시를 활성화하려면 아래 환경 변수를 설정하세요.
+
+- `VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_CLAIMS_SUB` (예: `mailto:admin@example.com`)
+
+키 생성 예시:
+
+```bash
+npx web-push generate-vapid-keys
+```
