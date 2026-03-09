@@ -79,12 +79,19 @@ npm run dev
 
 프론트엔드는 Netlify에 배포됩니다. 자세한 배포 가이드는 [DEPLOYMENT.md](DEPLOYMENT.md)를 참조하세요.
 
-### 백엔드 (Render/Railway/Fly.io)
-백엔드는 Render, Railway, Fly.io 등에 배포 가능합니다.
+### 백엔드 (Azure VM)
+백엔드는 Azure VM에서 24/7 운영 중입니다.
 
-**필수 환경 변수:**
-- Python 3.12+
-- 포트: `$PORT` (자동 할당)
+**서버 정보:**
+- URL: http://20.196.128.122:8000
+- Python 3.14+
+- FastAPI + Uvicorn
+- 포트: 8000
+
+**Netlify 환경 변수:**
+```
+BACKEND_API_URL=http://20.196.128.122:8000
+```
 
 ## 라이센스
 

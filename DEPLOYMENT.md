@@ -11,49 +11,49 @@
 ### 환경 변수 설정
 Netlify 사이트 설정에서:
 - Site settings → Environment variables
-- `VITE_API_URL` = 백엔드 API URL (예: `https://smubab-api.onrender.com`)
+- `BACKEND_API_URL` = 백엔드 API URL (예: `http://20.196.128.122:8000`)
 
 ### 자동 배포
 - `main` 브랜치에 push하면 자동으로 배포됩니다.
 
-## 2. 백엔드 배포 (추천: Render/Railway/Fly.io)
+## 2. 백엔드 배포 (Azure VM)
 
-### Render.com 사용 예시
-1. [Render](https://render.com/) 로그인
-2. "New Web Service" 선택
-3. GitHub 저장소 연결
-4. 설정:
-   - **Name**: smubab-api
-   - **Root Directory**: `backend`
-    - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-   - **Instance Type**: Free
+### Azure VM 설정
+백엔드는 Azure Windows Server에서 24/7 운영 중입니다.
 
-5. 환경 변수 설정 (Environment Variables):
-   - **웹 푸시 알림용** (선택):
-     - `VAPID_PUBLIC_KEY`: 생성된 VAPID 공개키
-     - `VAPID_PRIVATE_KEY`: 생성된 VAPID 비공개키
-     - `VAPID_CLAIMS_SUB`: `mailto:your-email@example.com`
-   - **천안캠 OCR용** (선택, Free 플랜에서 필수):
-     - `OCR_SPACE_API_KEY`: [OCR.space](https://ocr.space/ocrapi)에서 무료 발급
-     - 이 키가 없으면 천안캠 교직원/학생 식당 메뉴는 "정보없음"으로 표시됨
+**서버 정보:**
+- **URL**: http://20.196.128.122:8000
+- **VM**: Windows Server 2025 (Azure Korea Central)
+- **Python**: 3.14+
+- **서버**: FastAPI + Uvicorn
 
-6. 배포 후 URL을 Netlify 환경 변수(`VITE_API_URL`)에 설정
-
-### Railway.app 사용 예시
-1. [Railway](https://railway.app/) 로그인
-2. "New Project" → "Deploy from GitHub repo"
-3. 저장소 선택 후 자동 감지
-4. Root directory를 `backend`로 설정
-5. 환경 변수 설정 (필요시)
-
-### Fly.io 사용 예시
+### 수동 배포 (VM에서)
 ```bash
-# Fly CLI 설치 후
-cd backend
-fly auth login
-fly launch
-fly deploy
+cd C:\Users\littlebit\.openclaw\workspace\smubab\backend
+git pull origin main
+pip install -r requirements.txt
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+### 자동 시작 설정
+VM 재부팅 시 자동으로 서버가 시작되도록 설정:
+```bash
+# start-backend.bat 실행
+C:\Users\littlebit\.openclaw\workspace\smubab\backend\start-backend.bat
+```
+
+### 환경 변수 (선택)
+- **웹 푸시 알림용**:
+  - `VAPID_PUBLIC_KEY`: VAPID 공개키
+  - `VAPID_PRIVATE_KEY`: VAPID 비공개키
+  - `VAPID_CLAIMS_SUB`: `mailto:your-email@example.com`
+- **천안캠 OCR용**:
+  - `OCR_SPACE_API_KEY`: [OCR.space](https://ocr.space/ocrapi)에서 무료 발급
+
+### Netlify 환경 변수 설정
+Netlify에서 백엔드 URL 설정:
+```
+BACKEND_API_URL=http://20.196.128.122:8000
 ```
 
 ## 3. CORS 설정
@@ -82,8 +82,8 @@ app.add_middleware(
 ## 문제 해결
 
 ### "Failed to load menus" 오류
-- Netlify 환경 변수에 `VITE_API_URL`이 설정되어 있는지 확인
-- 백엔드 API가 정상 작동하는지 확인 (브라우저에서 직접 접속)
+- Netlify 환경 변수에 `BACKEND_API_URL`이 설정되어 있는지 확인
+- 백엔드 API가 정상 작동하는지 확인: http://20.196.128.122:8000/api/health
 - CORS 설정이 올바른지 확인
 
 ### 페이지 새로고침 시 404 오류
