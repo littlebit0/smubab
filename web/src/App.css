@@ -1,27 +1,27 @@
 .app {
-  --bg: #f6f7f4;
+  --bg: #f5f7fb;
   --surface: #ffffff;
-  --surface-soft: #eef4ef;
-  --surface-strong: #123c31;
-  --border: #dce5de;
-  --text: #19231f;
-  --text-secondary: #5a675f;
-  --text-muted: #87948c;
-  --accent: #168861;
-  --accent-strong: #0c5f45;
-  --accent-soft: #daf1e5;
+  --surface-soft: #edf4ff;
+  --surface-strong: #073b7a;
+  --border: #d9e3f2;
+  --text: #142033;
+  --text-secondary: #56677f;
+  --text-muted: #8492a8;
+  --accent: #0f62b8;
+  --accent-strong: #073b7a;
+  --accent-soft: #dcecff;
   --breakfast: #cf7a1d;
-  --lunch: #168861;
-  --dinner: #4b63c7;
+  --lunch: #0f62b8;
+  --dinner: #4c55b8;
   --danger: #c85c33;
   --danger-soft: #fde8dc;
-  --shadow-soft: rgba(27, 42, 34, 0.08);
+  --shadow-soft: rgba(15, 45, 85, 0.1);
 
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   background:
-    linear-gradient(180deg, rgba(22, 136, 97, 0.08), transparent 280px),
+    linear-gradient(180deg, rgba(15, 98, 184, 0.1), transparent 280px),
     var(--bg);
   color: var(--text);
 }
@@ -29,16 +29,16 @@
 @media (prefers-color-scheme: dark) {
   .app {
     --bg: #101412;
-    --surface: #171d1a;
-    --surface-soft: #1f2824;
-    --surface-strong: #0f2d25;
-    --border: #2d3833;
-    --text: #edf3ef;
-    --text-secondary: #b8c4bd;
-    --text-muted: #7f8c85;
-    --accent: #45d19b;
-    --accent-strong: #91e6c5;
-    --accent-soft: #173a2d;
+    --surface: #141a24;
+    --surface-soft: #1d2a3b;
+    --surface-strong: #071f41;
+    --border: #29384c;
+    --text: #edf4ff;
+    --text-secondary: #bac8da;
+    --text-muted: #8090a5;
+    --accent: #5da8ff;
+    --accent-strong: #9fccff;
+    --accent-soft: #132f52;
     --danger: #ff9d6e;
     --danger-soft: #3d251c;
     --shadow-soft: rgba(0, 0, 0, 0.32);
@@ -72,7 +72,7 @@
   margin-bottom: 0.45rem;
   border: 1px solid rgba(255, 255, 255, 0.36);
   border-radius: 999px;
-  color: #dff4ea;
+  color: #dcecff;
   font-size: 0.72rem;
   font-weight: 900;
 }
