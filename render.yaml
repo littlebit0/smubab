@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: smubab-api
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    autoDeploy: true
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: smubab-db
+          property: connectionString
+      - key: MENU_UPDATE_INTERVAL_SECONDS
+        value: "21600"
+      - key: MENU_WEEKEND_UPDATE_INTERVAL_SECONDS
+        value: "3600"
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_CLAIMS_SUB
+        value: mailto:admin@smubab.app
+      - key: CORS_ALLOWED_ORIGIN_REGEX
+        value: https://.*\.netlify\.app
+
+databases:
+  - name: smubab-db
+    databaseName: smubab
+    user: smubab
+    plan: free
+    postgresMajorVersion: "16"
