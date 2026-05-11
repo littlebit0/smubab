@@ -26,8 +26,15 @@ exports.handler = async (event) => {
             process.env.BACKEND_API_URL ||
             process.env.NETLIFY_BACKEND_API_URL ||
             process.env.VITE_PUSH_API_URL ||
-            process.env.VITE_API_URL ||
-            'https://smubab-api.onrender.com';
+            process.env.VITE_API_URL;
+
+        if (!apiBaseUrl) {
+            return {
+                statusCode: 503,
+                headers,
+                body: JSON.stringify({ success: false, message: 'BACKEND_API_URL is not configured' }),
+            };
+        }
 
         const normalizedBaseUrl = apiBaseUrl.replace(/\/$/, '');
         const upstreamUrl = `${normalizedBaseUrl}/api/push/unsubscribe`;

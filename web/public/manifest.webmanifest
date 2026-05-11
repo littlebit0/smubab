@@ -3,8 +3,21 @@
     "short_name": "SMU-Bab",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#ffffff",
-    "theme_color": "#007AFF",
+    "background_color": "#f4f6f8",
+    "theme_color": "#12382d",
     "lang": "ko-KR",
-    "description": "상명대학교 학식 정보를 확인하세요"
+    "description": "상명대학교 학식 정보를 확인하세요",
+    "icons": [
+        {
+            "src": "/icon.png",
+            "sizes": "1024x1024",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/favicon.png",
+            "sizes": "32x32",
+            "type": "image/png"
+        }
+    ]
 }

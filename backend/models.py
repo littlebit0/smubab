@@ -43,6 +43,7 @@ class MenuResponse(BaseModel):
     success: bool
     data: List[Menu]
     message: Optional[str] = None
+    error: Optional[str] = None
 
 
 class DailyMenuResponse(BaseModel):
@@ -50,6 +51,7 @@ class DailyMenuResponse(BaseModel):
     date: date
     menus: List[Menu]
     message: Optional[str] = None
+    error: Optional[str] = None
 
 
 class PushSubscriptionKeys(BaseModel):

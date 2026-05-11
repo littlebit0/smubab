@@ -14,7 +14,10 @@ exports.handler = async (event) => {
     }
 
     try {
-        const apiBaseUrl = process.env.BACKEND_API_URL || process.env.NETLIFY_BACKEND_API_URL || process.env.VITE_API_URL || 'https://smubab-api.onrender.com';
+        const apiBaseUrl = process.env.BACKEND_API_URL || process.env.NETLIFY_BACKEND_API_URL || process.env.VITE_API_URL;
+        if (!apiBaseUrl) {
+            throw new Error('BACKEND_API_URL is not configured');
+        }
 
         const normalizedBaseUrl = apiBaseUrl.replace(/\/$/, '');
         const upstreamUrl = `${normalizedBaseUrl}/api/menus/today`;
@@ -78,10 +81,11 @@ exports.handler = async (event) => {
             statusCode: 200,
             headers,
             body: JSON.stringify({
-                success: true,
+                success: false,
                 date: dateStr,
                 menus: fallbackMenus,
-                message: '백엔드 연결 실패로 기본 메뉴를 표시합니다.'
+                message: '백엔드 연결 실패로 기본 메뉴를 표시합니다.',
+                error: 'BACKEND_API_URL 환경 변수와 백엔드 상태를 확인해 주세요.'
             })
         };
     }

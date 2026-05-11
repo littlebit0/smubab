@@ -11,8 +11,8 @@ self.addEventListener('push', (event) => {
     const title = payload.title || 'SMU-Bab';
     const options = {
         body: payload.body || '메뉴 업데이트를 확인해보세요.',
-        icon: '/favicon.ico',
-        badge: '/favicon.ico',
+        icon: '/icon.png',
+        badge: '/notification-icon.png',
         data: {
             url: payload.url || '/',
         },

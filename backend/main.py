@@ -8,7 +8,10 @@ import os
 import json
 import time
 
+from dotenv import load_dotenv
 from pywebpush import webpush, WebPushException
+
+load_dotenv()
 
 from models import (
     MenuResponse, DailyMenuResponse,
@@ -28,10 +31,30 @@ app = FastAPI(
     version="1.0.0"
 )
 
+def get_allowed_origins() -> list[str]:
+    origins = os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        ",".join(
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:3001",
+                "http://localhost:5000",
+                "http://127.0.0.1:5000",
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+            ]
+        ),
+    )
+    return [origin.strip() for origin in origins.split(",") if origin.strip()]
+
+
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 프로덕션에서는 특정 도메인만 허용
+    allow_origins=get_allowed_origins(),
+    allow_origin_regex=os.getenv("CORS_ALLOWED_ORIGIN_REGEX", r"https://.*\.netlify\.app"),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,10 +63,25 @@ app.add_middleware(
 crawler = SMUCafeteriaCrawler()
 _update_lock = threading.Lock()
 _is_updating = False
+_scheduler_started = False
+_scheduler_stop_event = threading.Event()
 
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_CLAIMS_SUB = os.getenv("VAPID_CLAIMS_SUB", "mailto:admin@smubab.app")
+
+
+def get_effective_week_date(target_date: date) -> date:
+    if target_date.weekday() >= 5:
+        return target_date + timedelta(days=7 - target_date.weekday())
+    return target_date
+
+
+def get_week_bounds(target_date: date) -> tuple[date, date]:
+    effective_date = get_effective_week_date(target_date)
+    monday = effective_date - timedelta(days=effective_date.weekday())
+    friday = monday + timedelta(days=4)
+    return monday, friday
 
 
 def is_push_enabled() -> bool:
@@ -117,10 +155,7 @@ def update_menus(target_date: Optional[date] = None, notify: bool = False):
     if target_date is None:
         target_date = date.today()
 
-    weekday = target_date.weekday()
-    monday = target_date - timedelta(days=weekday)
-    friday = monday + timedelta(days=4)
-
+    monday, friday = get_week_bounds(target_date)
     menus = crawler.crawl_weekly_menu(target_date)
     saved_count = db.save_menus(menus)
     db.clear_old_menus(date.today() - timedelta(days=7))
@@ -152,17 +187,55 @@ def trigger_update_menus(target_date: Optional[date] = None, notify: bool = Fals
     return True
 
 
+def start_menu_update_scheduler():
+    global _scheduler_started
+    if _scheduler_started:
+        return
+
+    weekday_interval_seconds = int(os.getenv("MENU_UPDATE_INTERVAL_SECONDS", "21600"))
+    weekend_interval_seconds = int(
+        os.getenv("MENU_WEEKEND_UPDATE_INTERVAL_SECONDS", "3600")
+    )
+    if weekday_interval_seconds <= 0 and weekend_interval_seconds <= 0:
+        logger.info("Menu update scheduler disabled")
+        return
+
+    _scheduler_started = True
+
+    def _loop():
+        logger.info(
+            "Menu update scheduler started: weekday=%ss weekend=%ss",
+            weekday_interval_seconds,
+            weekend_interval_seconds,
+        )
+        while not _scheduler_stop_event.is_set():
+            trigger_update_menus(date.today(), notify=True)
+            is_weekend = date.today().weekday() >= 5
+            interval_seconds = (
+                weekend_interval_seconds if is_weekend else weekday_interval_seconds
+            )
+            if interval_seconds <= 0:
+                interval_seconds = max(weekday_interval_seconds, weekend_interval_seconds)
+            if _scheduler_stop_event.wait(interval_seconds):
+                break
+
+    thread = threading.Thread(target=_loop, daemon=True)
+    thread.start()
+
+
 @app.on_event("startup")
 async def startup_event():
     """서버 시작 시 실행"""
     logger.info("Starting SMU-Bab API server...")
     trigger_update_menus(date.today(), notify=False)
+    start_menu_update_scheduler()
     logger.info("Server started successfully")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """서버 종료 시 실행"""
+    _scheduler_stop_event.set()
     logger.info("Server shutdown")
 
 
@@ -239,9 +312,7 @@ async def get_weekly_menus(
         target_date = date.today()
     
     # 해당 날짜가 속한 주의 월요일과 금요일 계산
-    weekday = target_date.weekday()
-    monday = target_date - timedelta(days=weekday)
-    friday = monday + timedelta(days=4)
+    monday, friday = get_week_bounds(target_date)
     
     # 데이터베이스에서 조회
     menus = db.get_weekly_menus(monday, friday)
@@ -305,7 +376,7 @@ async def get_restaurants():
 async def refresh_menus():
     """메뉴 정보를 강제로 갱신합니다."""
     try:
-        db.menus = []
+        db.clear_menus()
         update_menus(date.today(), notify=True)
         return {
             "success": True,
@@ -327,6 +398,15 @@ async def get_push_public_key():
     return {
         "success": True,
         "publicKey": VAPID_PUBLIC_KEY,
+    }
+
+
+@app.get("/api/push/status")
+async def get_push_status():
+    return {
+        "success": True,
+        "configured": is_push_enabled(),
+        "subscriptionCount": len(db.get_push_subscriptions()),
     }
 
 

@@ -1,101 +1,271 @@
-from datetime import date, datetime
-from typing import List, Optional
-from models import Menu, MenuItem, MealType, Restaurant
+from __future__ import annotations
+
 import json
+import os
+import sqlite3
+import threading
+from datetime import date, datetime
+from pathlib import Path
+from typing import List, Optional
+
+from models import MealType, Menu, MenuItem, Restaurant
 
 
 class MenuDatabase:
-    """간단한 인메모리 데이터베이스 (추후 SQLite/PostgreSQL로 교체 가능)"""
-    
-    def __init__(self):
-        self.menus: List[Menu] = []
-        self.push_subscriptions: List[dict] = []
-    
+    """SQLite-backed cache for menus and web push subscriptions."""
+
+    def __init__(self, database_url: Optional[str] = None):
+        self.db_path = self._resolve_db_path(database_url)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
+        self._connection = sqlite3.connect(
+            self.db_path,
+            check_same_thread=False,
+            detect_types=sqlite3.PARSE_DECLTYPES,
+        )
+        self._connection.row_factory = sqlite3.Row
+        self._initialize()
+
+    @staticmethod
+    def _resolve_db_path(database_url: Optional[str]) -> Path:
+        raw = (
+            database_url
+            or os.getenv("MENU_DB_PATH")
+            or os.getenv("DATABASE_URL")
+            or str(Path(__file__).with_name("smubab.db"))
+        )
+        if raw.startswith("sqlite:///"):
+            raw = raw.removeprefix("sqlite:///")
+        elif raw.startswith("sqlite://"):
+            raw = raw.removeprefix("sqlite://")
+        return Path(raw).expanduser().resolve()
+
+    def _initialize(self) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS menus (
+                    date TEXT NOT NULL,
+                    restaurant TEXT NOT NULL,
+                    meal_type TEXT NOT NULL,
+                    items_json TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (date, restaurant, meal_type)
+                )
+                """
+            )
+            self._connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS push_subscriptions (
+                    endpoint TEXT PRIMARY KEY,
+                    subscription_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            self._connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_menus_date ON menus(date)"
+            )
+
     def save_menus(self, menus: List[Menu]) -> int:
-        """메뉴 목록을 저장합니다."""
-        saved_count = 0
-        for menu in menus:
-            # 중복 체크 (같은 날짜, 식당, 식사 타입)
-            existing = self.get_menu(menu.date, menu.restaurant, menu.meal_type)
-            if existing:
-                # 기존 메뉴 업데이트
-                self.menus.remove(existing)
-            
-            self.menus.append(menu)
-            saved_count += 1
-        
-        return saved_count
-    
+        """Upsert menus and return the number of newly changed rows."""
+        changed_count = 0
+        now = datetime.now().isoformat()
+        with self._lock, self._connection:
+            for menu in menus:
+                items_json = self._items_to_json(menu.items)
+                content_hash = self._menu_hash(items_json)
+                key = (
+                    menu.date.isoformat(),
+                    self._enum_value(menu.restaurant),
+                    self._enum_value(menu.meal_type),
+                )
+                existing = self._connection.execute(
+                    """
+                    SELECT content_hash, created_at
+                    FROM menus
+                    WHERE date = ? AND restaurant = ? AND meal_type = ?
+                    """,
+                    key,
+                ).fetchone()
+                if existing and existing["content_hash"] == content_hash:
+                    continue
+
+                created_at = existing["created_at"] if existing else now
+                self._connection.execute(
+                    """
+                    INSERT INTO menus (
+                        date, restaurant, meal_type, items_json,
+                        content_hash, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(date, restaurant, meal_type)
+                    DO UPDATE SET
+                        items_json = excluded.items_json,
+                        content_hash = excluded.content_hash,
+                        updated_at = excluded.updated_at
+                    """,
+                    (*key, items_json, content_hash, created_at, now),
+                )
+                changed_count += 1
+
+        return changed_count
+
     def get_menu(
-        self, 
-        target_date: date, 
+        self,
+        target_date: date,
         restaurant: Optional[Restaurant] = None,
-        meal_type: Optional[MealType] = None
+        meal_type: Optional[MealType] = None,
     ) -> Optional[Menu]:
-        """특정 조건의 메뉴를 조회합니다."""
-        for menu in self.menus:
-            if menu.date == target_date:
-                if restaurant and menu.restaurant != restaurant:
-                    continue
-                if meal_type and menu.meal_type != meal_type:
-                    continue
-                return menu
-        return None
-    
+        query = "SELECT * FROM menus WHERE date = ?"
+        params: list[str] = [target_date.isoformat()]
+        if restaurant:
+            query += " AND restaurant = ?"
+            params.append(self._enum_value(restaurant))
+        if meal_type:
+            query += " AND meal_type = ?"
+            params.append(self._enum_value(meal_type))
+        query += " ORDER BY restaurant, meal_type LIMIT 1"
+
+        with self._lock:
+            row = self._connection.execute(query, params).fetchone()
+        return self._row_to_menu(row) if row else None
+
     def get_daily_menus(self, target_date: date) -> List[Menu]:
-        """특정 날짜의 모든 메뉴를 조회합니다."""
-        return [menu for menu in self.menus if menu.date == target_date]
-    
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM menus
+                WHERE date = ?
+                ORDER BY restaurant, meal_type
+                """,
+                (target_date.isoformat(),),
+            ).fetchall()
+        return [self._row_to_menu(row) for row in rows]
+
     def get_weekly_menus(self, start_date: date, end_date: date) -> List[Menu]:
-        """특정 기간의 메뉴를 조회합니다."""
-        return [
-            menu for menu in self.menus 
-            if start_date <= menu.date <= end_date
-        ]
-    
-    def get_menus_by_restaurant(self, restaurant: Restaurant, target_date: date = None) -> List[Menu]:
-        """특정 식당의 메뉴를 조회합니다."""
-        menus = [menu for menu in self.menus if menu.restaurant == restaurant]
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM menus
+                WHERE date BETWEEN ? AND ?
+                ORDER BY date, restaurant, meal_type
+                """,
+                (start_date.isoformat(), end_date.isoformat()),
+            ).fetchall()
+        return [self._row_to_menu(row) for row in rows]
+
+    def get_menus_by_restaurant(
+        self,
+        restaurant: Restaurant,
+        target_date: date | None = None,
+    ) -> List[Menu]:
+        query = "SELECT * FROM menus WHERE restaurant = ?"
+        params = [self._enum_value(restaurant)]
         if target_date:
-            menus = [menu for menu in menus if menu.date == target_date]
-        return menus
-    
+            query += " AND date = ?"
+            params.append(target_date.isoformat())
+        query += " ORDER BY date, meal_type"
+
+        with self._lock:
+            rows = self._connection.execute(query, params).fetchall()
+        return [self._row_to_menu(row) for row in rows]
+
     def clear_old_menus(self, before_date: date) -> int:
-        """특정 날짜 이전의 메뉴를 삭제합니다."""
-        old_menus = [menu for menu in self.menus if menu.date < before_date]
-        for menu in old_menus:
-            self.menus.remove(menu)
-        return len(old_menus)
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "DELETE FROM menus WHERE date < ?",
+                (before_date.isoformat(),),
+            )
+            return cursor.rowcount
+
+    def clear_menus(self) -> int:
+        with self._lock, self._connection:
+            cursor = self._connection.execute("DELETE FROM menus")
+            return cursor.rowcount
 
     def upsert_push_subscription(self, subscription: dict) -> bool:
         endpoint = subscription.get("endpoint")
         if not endpoint:
             return False
 
-        existing = next(
-            (item for item in self.push_subscriptions if item.get("endpoint") == endpoint),
-            None,
-        )
-        if existing:
-            self.push_subscriptions.remove(existing)
-
-        self.push_subscriptions.append(subscription)
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO push_subscriptions (
+                    endpoint, subscription_json, updated_at
+                )
+                VALUES (?, ?, ?)
+                ON CONFLICT(endpoint)
+                DO UPDATE SET
+                    subscription_json = excluded.subscription_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    endpoint,
+                    json.dumps(subscription, ensure_ascii=False),
+                    datetime.now().isoformat(),
+                ),
+            )
         return True
 
     def remove_push_subscription(self, endpoint: str) -> bool:
-        existing = next(
-            (item for item in self.push_subscriptions if item.get("endpoint") == endpoint),
-            None,
-        )
-        if not existing:
-            return False
-
-        self.push_subscriptions.remove(existing)
-        return True
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "DELETE FROM push_subscriptions WHERE endpoint = ?",
+                (endpoint,),
+            )
+            return cursor.rowcount > 0
 
     def get_push_subscriptions(self) -> List[dict]:
-        return list(self.push_subscriptions)
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT subscription_json FROM push_subscriptions"
+            ).fetchall()
+        return [json.loads(row["subscription_json"]) for row in rows]
+
+    @staticmethod
+    def _enum_value(value) -> str:
+        return getattr(value, "value", value)
+
+    @staticmethod
+    def _items_to_json(items: List[MenuItem]) -> str:
+        normalized = [
+            {
+                "name": item.name,
+                "price": item.price,
+                "calories": item.calories,
+            }
+            for item in items
+        ]
+        return json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+
+    @staticmethod
+    def _menu_hash(items_json: str) -> str:
+        import hashlib
+
+        return hashlib.sha256(items_json.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _row_to_menu(row: sqlite3.Row) -> Menu:
+        items = [
+            MenuItem(
+                name=item.get("name", ""),
+                price=item.get("price"),
+                calories=item.get("calories"),
+            )
+            for item in json.loads(row["items_json"])
+        ]
+        return Menu(
+            date=date.fromisoformat(row["date"]),
+            restaurant=row["restaurant"],
+            meal_type=row["meal_type"],
+            items=items,
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
 
 
-# 전역 데이터베이스 인스턴스
 db = MenuDatabase()

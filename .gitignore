@@ -18,6 +18,7 @@ build/
 *.swp
 *.swo
 *~
+.tools/
 
 # OS
 .DS_Store
@@ -35,11 +36,13 @@ Thumbs.db
 # Logs
 *.log
 logs/
+.local-logs/
 
 # Backend specific
 backend/.env
 backend/__pycache__/
 backend/*.db
+backend/menu_ocr_cache.json
 
 # Mobile specific
 mobile/node_modules/
@@ -48,6 +51,11 @@ mobile/.expo-shared/
 mobile/dist/
 mobile/web-build/
 mobile/.env
+mobile_flutter/.dart_tool/
+mobile_flutter/.flutter-plugins
+mobile_flutter/.flutter-plugins-dependencies
+mobile_flutter/build/
+mobile_flutter/.idea/
 
 # Web specific
 web/node_modules/
