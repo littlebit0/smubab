@@ -227,6 +227,56 @@ button:disabled {
   font-weight: 800;
 }
 
+.selector-panel {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.selector-group {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 8px 22px var(--shadow-soft);
+}
+
+.campus-switch {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.meal-switch {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.selector-button,
+.meal-button {
+  min-height: 46px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.98rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.selector-button:hover,
+.meal-button:hover {
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.selector-button.active,
+.meal-button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
 .status-banner {
   display: grid;
   gap: 0.25rem;
@@ -282,9 +332,18 @@ button:disabled {
   gap: 0.8rem;
 }
 
+.focused-menu-layout {
+  display: grid;
+  gap: 0.8rem;
+}
+
 .week-grid {
   display: grid;
   gap: 1.2rem;
+}
+
+.focused-week-grid {
+  grid-template-columns: 1fr;
 }
 
 .week-day {
@@ -535,6 +594,15 @@ button:disabled {
     padding: 1.75rem 1rem 3rem;
   }
 
+  .selector-panel {
+    grid-template-columns: 1.25fr 0.9fr;
+    align-items: stretch;
+  }
+
+  .focused-menu-layout {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+
   .menus-container {
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   }
@@ -542,6 +610,10 @@ button:disabled {
   .week-grid {
     grid-template-columns: repeat(5, minmax(220px, 1fr));
     align-items: start;
+  }
+
+  .focused-week-grid {
+    grid-template-columns: repeat(5, minmax(220px, 1fr));
   }
 }
 

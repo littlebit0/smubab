@@ -5,6 +5,15 @@ import { Menu, menuAPI, pushAPI } from './api'
 import './App.css'
 import { isPushSupported, isStandaloneMode, urlBase64ToUint8Array } from './push'
 
+type ViewMode = 'today' | 'week'
+type Campus = '서울캠퍼스' | '천안캠퍼스'
+type MealKey = 'breakfast' | 'lunch'
+
+const CAMPUS_STORAGE_KEY = 'smubab:last-campus'
+
+const CAMPUS_OPTIONS: Campus[] = ['서울캠퍼스', '천안캠퍼스']
+const MEAL_OPTIONS: MealKey[] = ['breakfast', 'lunch']
+
 const MEAL_TYPE_NAMES: Record<string, string> = {
   breakfast: '아침',
   lunch: '점심',
@@ -19,30 +28,54 @@ const RESTAURANT_NAMES: Record<string, string> = {
   천안_교직원식당: '천안 교직원식당',
 }
 
-const MEAL_ORDER: Record<string, number> = {
-  breakfast: 0,
-  lunch: 1,
-  dinner: 2,
+const RESTAURANT_ORDER: Record<string, number> = {
+  서울_학생식당: 0,
+  서울_교직원식당: 1,
+  서울_푸드코트: 2,
+  천안_학생식당: 0,
+  천안_교직원식당: 1,
 }
-
-const formatRestaurantName = (restaurant: string) =>
-  RESTAURANT_NAMES[restaurant] || restaurant.replace(/_/g, ' ')
-
-const campusName = (restaurant: string) =>
-  restaurant.startsWith('천안') ? '천안캠퍼스' : '서울캠퍼스'
 
 const isWeekend = () => {
   const day = new Date().getDay()
   return day === 0 || day === 6
 }
 
+const getInitialMeal = (): MealKey => {
+  const now = new Date()
+  const minutes = now.getHours() * 60 + now.getMinutes()
+  return minutes < 10 * 60 + 30 ? 'breakfast' : 'lunch'
+}
+
+const getInitialCampus = (): Campus => {
+  try {
+    const savedCampus = window.localStorage.getItem(CAMPUS_STORAGE_KEY)
+    if (savedCampus === '서울캠퍼스' || savedCampus === '천안캠퍼스') {
+      return savedCampus
+    }
+  } catch {
+    return '서울캠퍼스'
+  }
+
+  return '서울캠퍼스'
+}
+
+const formatRestaurantName = (restaurant: string) =>
+  RESTAURANT_NAMES[restaurant] || restaurant.replace(/_/g, ' ')
+
+const campusName = (restaurant: string): Campus =>
+  restaurant.startsWith('천안') ? '천안캠퍼스' : '서울캠퍼스'
+
 const sortMenus = (menus: Menu[]) =>
   [...menus].sort((a, b) => {
-    const campusCompare = campusName(a.restaurant).localeCompare(campusName(b.restaurant), 'ko')
-    if (campusCompare !== 0) return campusCompare
-    const restaurantCompare = formatRestaurantName(a.restaurant).localeCompare(formatRestaurantName(b.restaurant), 'ko')
+    const dateCompare = a.date.localeCompare(b.date)
+    if (dateCompare !== 0) return dateCompare
+
+    const restaurantCompare =
+      (RESTAURANT_ORDER[a.restaurant] ?? 9) - (RESTAURANT_ORDER[b.restaurant] ?? 9)
     if (restaurantCompare !== 0) return restaurantCompare
-    return (MEAL_ORDER[a.meal_type] ?? 9) - (MEAL_ORDER[b.meal_type] ?? 9)
+
+    return formatRestaurantName(a.restaurant).localeCompare(formatRestaurantName(b.restaurant), 'ko')
   })
 
 const groupBy = <T,>(items: T[], getKey: (item: T) => string) =>
@@ -54,7 +87,9 @@ const groupBy = <T,>(items: T[], getKey: (item: T) => string) =>
   }, {})
 
 function App() {
-  const [view, setView] = useState<'today' | 'week'>(() => isWeekend() ? 'week' : 'today')
+  const [view, setView] = useState<ViewMode>(() => isWeekend() ? 'week' : 'today')
+  const [selectedCampus, setSelectedCampus] = useState<Campus>(getInitialCampus)
+  const [selectedMeal, setSelectedMeal] = useState<MealKey>(getInitialMeal)
   const [loading, setLoading] = useState(true)
   const [menus, setMenus] = useState<Menu[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -66,19 +101,31 @@ function App() {
   const standalone = isStandaloneMode()
   const pushSupported = isPushSupported()
 
-  const sortedMenus = useMemo(() => sortMenus(menus), [menus])
-  const restaurantCount = useMemo(
-    () => new Set(menus.map(menu => menu.restaurant)).size,
-    [menus]
-  )
-  const itemCount = useMemo(
-    () => menus.reduce((total, menu) => total + menu.items.length, 0),
-    [menus]
+  const visibleMenus = useMemo(() => {
+    return sortMenus(
+      menus.filter(menu =>
+        campusName(menu.restaurant) === selectedCampus &&
+        menu.meal_type === selectedMeal
+      )
+    )
+  }, [menus, selectedCampus, selectedMeal])
+
+  const visibleItemCount = useMemo(
+    () => visibleMenus.reduce((total, menu) => total + menu.items.length, 0),
+    [visibleMenus]
   )
 
   useEffect(() => {
     loadMenus()
   }, [view])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CAMPUS_STORAGE_KEY, selectedCampus)
+    } catch {
+      // localStorage can be unavailable in restricted browser modes.
+    }
+  }, [selectedCampus])
 
   useEffect(() => {
     if (!pushSupported) {
@@ -197,6 +244,23 @@ function App() {
     }
   }
 
+  const renderSelectorButton = <T extends string>(
+    value: T,
+    activeValue: T,
+    onClick: (value: T) => void,
+    label: string,
+    className = 'selector-button'
+  ) => (
+    <button
+      key={value}
+      className={`${className} ${activeValue === value ? 'active' : ''}`}
+      onClick={() => onClick(value)}
+      aria-pressed={activeValue === value}
+    >
+      {label}
+    </button>
+  )
+
   const renderMenuItem = (item: Menu['items'][number], index: number) => (
     <li key={`${item.name}-${index}`} className="menu-item">
       <span className="item-dot" aria-hidden="true"></span>
@@ -209,13 +273,20 @@ function App() {
     <article key={`${menu.date}-${menu.restaurant}-${menu.meal_type}`} className={`menu-card meal-${menu.meal_type} ${compact ? 'compact' : ''}`}>
       <div className="menu-header">
         <div>
-          <span className="campus-label">{campusName(menu.restaurant)}</span>
+          <span className="campus-label">{selectedCampus}</span>
           <h3 className="restaurant-name">{formatRestaurantName(menu.restaurant)}</h3>
         </div>
         <span className="meal-type">{MEAL_TYPE_NAMES[menu.meal_type] || menu.meal_type}</span>
       </div>
       <ul className="menu-items">
-        {menu.items.map((item, idx) => renderMenuItem(item, idx))}
+        {menu.items.length > 0 ? (
+          menu.items.map((item, idx) => renderMenuItem(item, idx))
+        ) : (
+          <li className="menu-item empty-menu-item">
+            <span className="item-dot" aria-hidden="true"></span>
+            <span className="item-name">등록된 메뉴가 없습니다.</span>
+          </li>
+        )}
       </ul>
     </article>
   )
@@ -229,58 +300,70 @@ function App() {
     ) : null
   )
 
-  const renderTodayView = () => {
-    const campusGroups = groupBy(sortedMenus, menu => campusName(menu.restaurant))
-    const campuses = ['서울캠퍼스', '천안캠퍼스'].filter(campus => campusGroups[campus]?.length)
+  const renderControls = () => (
+    <section className="selector-panel" aria-label="캠퍼스와 끼니 선택">
+      <div className="selector-group campus-switch">
+        {CAMPUS_OPTIONS.map(campus =>
+          renderSelectorButton<Campus>(
+            campus,
+            selectedCampus,
+            value => setSelectedCampus(value),
+            campus
+          )
+        )}
+      </div>
+      <div className="selector-group meal-switch">
+        {MEAL_OPTIONS.map(meal =>
+          renderSelectorButton<MealKey>(
+            meal,
+            selectedMeal,
+            value => setSelectedMeal(value),
+            MEAL_TYPE_NAMES[meal],
+            'meal-button'
+          )
+        )}
+      </div>
+    </section>
+  )
 
-    return (
-      <section className="content" aria-labelledby="today-title">
-        <div className="page-header">
-          <div>
-            <p className="eyebrow">오늘의 식단</p>
-            <h2 id="today-title">{format(new Date(), 'yyyy년 MM월 dd일 (E)', { locale: ko })}</h2>
-            <p className="page-subtitle">캠퍼스별 식당과 끼니를 한 화면에서 확인하세요.</p>
+  const renderTodayView = () => (
+    <section className="content" aria-labelledby="today-title">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">오늘의 식단</p>
+          <h2 id="today-title">{selectedCampus} · {MEAL_TYPE_NAMES[selectedMeal]}</h2>
+          <p className="page-subtitle">{format(new Date(), 'yyyy년 MM월 dd일 (E)', { locale: ko })}</p>
+        </div>
+        <div className="metric-row" aria-label="선택 메뉴 요약">
+          <div className="metric">
+            <strong>{visibleMenus.length}</strong>
+            <span>식단</span>
           </div>
-          <div className="metric-row" aria-label="메뉴 요약">
-            <div className="metric">
-              <strong>{restaurantCount}</strong>
-              <span>식당</span>
-            </div>
-            <div className="metric">
-              <strong>{menus.length}</strong>
-              <span>식단</span>
-            </div>
+          <div className="metric">
+            <strong>{visibleItemCount}</strong>
+            <span>항목</span>
           </div>
         </div>
+      </div>
 
-        {renderStatusBanner()}
+      {renderControls()}
+      {renderStatusBanner()}
 
-        {campuses.length > 0 ? (
-          <div className="campus-layout">
-            {campuses.map(campus => (
-              <section key={campus} className="campus-section">
-                <div className="section-title-row">
-                  <h3>{campus}</h3>
-                  <span>{campusGroups[campus].length}개 식단</span>
-                </div>
-                <div className="menus-container">
-                  {campusGroups[campus].map(menu => renderMenu(menu))}
-                </div>
-              </section>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state">
-            <strong>메뉴 정보를 불러올 수 없습니다</strong>
-            <span>잠시 후 새로고침해 주세요.</span>
-          </div>
-        )}
-      </section>
-    )
-  }
+      {visibleMenus.length > 0 ? (
+        <div className="focused-menu-layout">
+          {visibleMenus.map(menu => renderMenu(menu))}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <strong>{selectedCampus} {MEAL_TYPE_NAMES[selectedMeal]} 메뉴가 없습니다</strong>
+          <span>다른 끼니를 선택하거나 잠시 후 새로고침해 주세요.</span>
+        </div>
+      )}
+    </section>
+  )
 
   const renderWeekView = () => {
-    const byDate = groupBy(sortedMenus, menu => menu.date)
+    const byDate = groupBy(visibleMenus, menu => menu.date)
     const dates = Object.keys(byDate).sort()
 
     return (
@@ -288,25 +371,26 @@ function App() {
         <div className="page-header">
           <div>
             <p className="eyebrow">이번 주 식단표</p>
-            <h2 id="week-title">날짜별 전체 메뉴</h2>
-            <p className="page-subtitle">식당을 오가지 않고 월요일부터 금요일까지 바로 비교할 수 있습니다.</p>
+            <h2 id="week-title">{selectedCampus} · {MEAL_TYPE_NAMES[selectedMeal]}</h2>
+            <p className="page-subtitle">선택한 캠퍼스와 끼니만 날짜별로 보여줍니다.</p>
           </div>
-          <div className="metric-row" aria-label="주간 메뉴 요약">
+          <div className="metric-row" aria-label="주간 선택 메뉴 요약">
             <div className="metric">
               <strong>{dates.length}</strong>
               <span>일</span>
             </div>
             <div className="metric">
-              <strong>{itemCount}</strong>
+              <strong>{visibleItemCount}</strong>
               <span>항목</span>
             </div>
           </div>
         </div>
 
+        {renderControls()}
         {renderStatusBanner()}
 
         {dates.length > 0 ? (
-          <div className="week-grid">
+          <div className="week-grid focused-week-grid">
             {dates.map(dateStr => {
               const dateObj = parseISO(dateStr)
               const isToday = format(dateObj, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
@@ -329,8 +413,8 @@ function App() {
           </div>
         ) : (
           <div className="empty-state">
-            <strong>이번 주 메뉴를 찾지 못했습니다</strong>
-            <span>백엔드 연결과 배포 환경 변수를 확인해 주세요.</span>
+            <strong>{selectedCampus} {MEAL_TYPE_NAMES[selectedMeal]} 주간 메뉴가 없습니다</strong>
+            <span>다른 끼니를 선택하거나 잠시 후 새로고침해 주세요.</span>
           </div>
         )}
       </section>
@@ -344,7 +428,7 @@ function App() {
           <div className="brand-block">
             <span className="brand-mark">SMU</span>
             <h1>SMU-Bab</h1>
-            <p>상명대학교 학식</p>
+            <p>{selectedCampus} {MEAL_TYPE_NAMES[selectedMeal]}</p>
           </div>
           <button className="header-refresh" onClick={loadMenus} disabled={loading}>
             새로고침
