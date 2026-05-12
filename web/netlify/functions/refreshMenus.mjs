@@ -1,3 +1,5 @@
+import { getStore } from '@netlify/blobs'
+
 const getBackendBaseUrl = () => {
   return (
     Netlify.env.get('BACKEND_API_URL') ||
@@ -7,6 +9,28 @@ const getBackendBaseUrl = () => {
   ).replace(/\/$/, '')
 }
 
+const fetchJson = async (url, options = {}) => {
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  })
+
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+const hasTodayMenus = payload =>
+  payload?.success && Array.isArray(payload.menus) && payload.menus.length > 0
+
+const hasWeeklyMenus = payload =>
+  payload?.success && Array.isArray(payload.data) && payload.data.length > 0
+
 export default async () => {
   const backendBaseUrl = getBackendBaseUrl()
 
@@ -15,19 +39,37 @@ export default async () => {
     return
   }
 
-  const response = await fetch(`${backendBaseUrl}/api/menus/refresh-async`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-    },
-  })
+  const store = getStore('menu-snapshots')
 
-  if (!response.ok) {
-    console.log(`Menu refresh trigger failed: ${response.status} ${response.statusText}`)
-    return
+  try {
+    const [todayPayload, weekPayload] = await Promise.all([
+      fetchJson(`${backendBaseUrl}/api/menus/today`),
+      fetchJson(`${backendBaseUrl}/api/menus/week`),
+    ])
+
+    if (hasTodayMenus(todayPayload)) {
+      await store.set('today.json', JSON.stringify(todayPayload))
+      console.log(`Today menu snapshot updated: ${todayPayload.menus.length} menus`)
+    }
+
+    if (hasWeeklyMenus(weekPayload)) {
+      await store.set('week.json', JSON.stringify(weekPayload))
+      console.log(`Weekly menu snapshot updated: ${weekPayload.data.length} menus`)
+    }
+
+    if (hasTodayMenus(todayPayload) && hasWeeklyMenus(weekPayload)) {
+      return
+    }
+  } catch (error) {
+    console.log(`Menu snapshot read failed: ${error.message}`)
   }
 
-  console.log('Menu refresh trigger succeeded')
+  try {
+    await fetchJson(`${backendBaseUrl}/api/menus/refresh-async`, { method: 'POST' })
+    console.log('Menu refresh trigger succeeded')
+  } catch (error) {
+    console.log(`Menu refresh trigger failed: ${error.message}`)
+  }
 }
 
 export const config = {

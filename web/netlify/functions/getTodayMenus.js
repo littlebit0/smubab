@@ -14,6 +14,22 @@ exports.handler = async (event) => {
     }
 
     try {
+        const { getStore } = await import('@netlify/blobs');
+        const store = getStore('menu-snapshots');
+        const snapshot = await store.get('today.json');
+
+        if (snapshot) {
+            return {
+                statusCode: 200,
+                headers: {
+                    ...headers,
+                    'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+                    'X-Menu-Source': 'blob',
+                },
+                body: snapshot,
+            };
+        }
+
         const apiBaseUrl = process.env.BACKEND_API_URL || process.env.NETLIFY_BACKEND_API_URL || process.env.VITE_API_URL;
         if (!apiBaseUrl) {
             throw new Error('BACKEND_API_URL is not configured');
@@ -34,10 +50,17 @@ exports.handler = async (event) => {
         }
 
         const payload = await response.json();
+        if (payload?.success && Array.isArray(payload.menus) && payload.menus.length > 0) {
+            await store.set('today.json', JSON.stringify(payload));
+        }
 
         return {
             statusCode: 200,
-            headers,
+            headers: {
+                ...headers,
+                'Cache-Control': 'public, max-age=30, stale-while-revalidate=120',
+                'X-Menu-Source': 'backend',
+            },
             body: JSON.stringify(payload)
         };
     } catch (error) {
