@@ -14,7 +14,8 @@ exports.handler = async (event) => {
     }
 
     try {
-        const { getStore } = await import('@netlify/blobs');
+        const { connectLambda, getStore } = await import('@netlify/blobs');
+        connectLambda(event);
         const store = getStore('menu-snapshots');
         const params = new URLSearchParams(event.queryStringParameters || {});
         const query = params.toString();

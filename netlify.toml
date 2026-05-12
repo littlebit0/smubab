@@ -10,6 +10,9 @@
 [functions]
   node_bundler = "esbuild"
 
+[functions."refreshMenus"]
+  schedule = "*/10 * * * *"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

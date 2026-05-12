@@ -1,10 +1,8 @@
-import { getStore } from '@netlify/blobs'
-
 const getBackendBaseUrl = () => {
   return (
-    Netlify.env.get('BACKEND_API_URL') ||
-    Netlify.env.get('NETLIFY_BACKEND_API_URL') ||
-    Netlify.env.get('VITE_API_URL') ||
+    process.env.BACKEND_API_URL ||
+    process.env.NETLIFY_BACKEND_API_URL ||
+    process.env.VITE_API_URL ||
     ''
   ).replace(/\/$/, '')
 }
@@ -31,14 +29,16 @@ const hasTodayMenus = payload =>
 const hasWeeklyMenus = payload =>
   payload?.success && Array.isArray(payload.data) && payload.data.length > 0
 
-export default async () => {
+exports.handler = async event => {
   const backendBaseUrl = getBackendBaseUrl()
 
   if (!backendBaseUrl) {
     console.log('Menu refresh skipped: BACKEND_API_URL is not configured')
-    return
+    return { statusCode: 204, body: '' }
   }
 
+  const { connectLambda, getStore } = await import('@netlify/blobs')
+  connectLambda(event)
   const store = getStore('menu-snapshots')
 
   try {
@@ -58,7 +58,7 @@ export default async () => {
     }
 
     if (hasTodayMenus(todayPayload) && hasWeeklyMenus(weekPayload)) {
-      return
+      return { statusCode: 204, body: '' }
     }
   } catch (error) {
     console.log(`Menu snapshot read failed: ${error.message}`)
@@ -70,8 +70,6 @@ export default async () => {
   } catch (error) {
     console.log(`Menu refresh trigger failed: ${error.message}`)
   }
-}
 
-export const config = {
-  schedule: '*/10 * * * *',
+  return { statusCode: 204, body: '' }
 }
