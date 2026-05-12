@@ -1,7 +1,7 @@
 import axios from 'axios/dist/browser/axios.cjs';
 import Constants from 'expo-constants';
 
-const fallbackBaseUrl = 'https://smubab1.onrender.com';
+const fallbackBaseUrl = 'http://127.0.0.1:8000';
 const envBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
 const extraBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl as string | undefined;
 const API_BASE_URL = (envBaseUrl || extraBaseUrl || fallbackBaseUrl).replace(/\/$/, '');

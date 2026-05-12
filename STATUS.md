@@ -1,121 +1,54 @@
-# SMU-Bab 프로젝트 상태 리포트
+# SMU-Bab 진행 상태
 
-## ✅ 완료된 작업
+기준일: 2026-05-12
 
-### 백엔드 (Python/FastAPI)
-- [x] FastAPI 서버 구현
-- [x] 데이터 모델 정의 (Menu, MenuItem, Restaurant, MealType)
-- [x] 내부 기본 메뉴 데이터 생성
-- [x] 인메모리 데이터베이스
-- [x] RESTful API 엔드포인트 8개
-- [x] CORS 설정
-- [x] API 문서 자동 생성 (Swagger/ReDoc)
-- [x] 의존성 설치 완료
-- [x] 문법 에러 없음
+## 완료
 
-### 모바일 앱 (React Native/Expo)
-- [x] Expo 프로젝트 구조
-- [x] 3개의 메인 화면 (오늘/주간/설정)
-- [x] React Navigation 설정
-- [x] API 통신 모듈
-- [x] 날짜 처리 (date-fns)
-- [x] 알림 기능 구현
-- [x] TypeScript 설정 수정
-- [x] 의존성 설치 완료 (node_modules)
-- [x] 타입 에러 수정
+- Netlify는 프론트엔드 정적 사이트 용도로 유지했습니다.
+- 백엔드는 원격 배포 없이 로컬 컴퓨터에서만 실행되도록 정리했습니다.
+- Render 배포 설정 파일 `render.yaml`을 제거했습니다.
+- 백엔드 `Dockerfile`을 제거했습니다.
+- PostgreSQL/DATABASE_URL 의존을 제거하고 로컬 SQLite 저장 방식으로 정리했습니다.
+- Netlify Functions 기반 메뉴/푸시 프록시를 제거했습니다.
+- Netlify 환경변수 `BACKEND_API_URL`은 삭제했습니다.
+- 웹/React Native/Flutter 기본 API 주소를 `http://127.0.0.1:8000` 기준으로 맞췄습니다.
+- 메뉴 캐시는 로컬 백엔드 SQLite에 저장된 결과를 API로 즉시 제공하는 구조입니다.
+- 서울캠퍼스/천안캠퍼스, 아침/점심 탭 UI는 웹앱에 적용되어 있습니다.
 
-### 문서 및 스크립트
-- [x] README.md - 프로젝트 소개
-- [x] DEVELOPMENT.md - 개발 가이드
-- [x] TESTING.md - 테스트 가이드
-- [x] backend/start.sh - 백엔드 실행 스크립트
-- [x] mobile/start.sh - 모바일 앱 실행 스크립트
-- [x] LICENSE - MIT 라이선스
-- [x] .gitignore - Git 제외 파일
-- [x] .vscode/settings.json - VS Code 설정
+## 현재 운영 구조
 
-## 📊 프로젝트 통계
+```text
+브라우저 또는 앱
+  -> http://127.0.0.1:8000
+  -> 로컬 FastAPI 백엔드
+  -> backend/smubab.db SQLite 캐시
+  -> 필요 시 상명대학교 식당 페이지 수집/OCR 갱신
+```
 
-- **백엔드 Python 파일**: 3개 (main.py, models.py, database.py)
-- **모바일 TypeScript/TSX 파일**: 5개
-- **총 코드 라인**: ~1,500+ 줄
-- **API 엔드포인트**: 8개
-- **화면**: 3개 (오늘메뉴, 주간메뉴, 설정)
-- **에러**: 0개 (백엔드), TypeScript strict 모드 완화로 해결
+Netlify에 올라간 웹앱도 같은 컴퓨터에서 실행 중인 로컬 백엔드에 직접 요청합니다. 따라서 Netlify 사이트만 열고 로컬 백엔드를 실행하지 않으면 메뉴가 표시되지 않습니다.
 
-## 🎯 API 엔드포인트
+## 확인한 항목
 
-| 메서드 | 엔드포인트 | 설명 |
-|--------|-----------|------|
-| GET | `/` | API 정보 |
-| GET | `/api/health` | 헬스 체크 |
-| GET | `/api/menus/today` | 오늘의 메뉴 |
-| GET | `/api/menus/date/{date}` | 특정 날짜 메뉴 |
-| GET | `/api/menus/week` | 주간 메뉴 |
-| GET | `/api/menus/restaurant/{restaurant}` | 식당별 메뉴 |
-| GET | `/api/restaurants` | 식당 목록 |
-| POST | `/api/menus/refresh` | 메뉴 강제 갱신 |
+- 백엔드 Python 문법 확인: 통과
+- 웹 빌드 확인: 통과
+- Render/PostgreSQL/Docker 배포 구성 제거: 완료
+- Netlify Functions 제거: 완료
 
-## 🚀 빠른 시작
+## 남은 작업
 
-### 백엔드 서버 실행
-```bash
+- 실제 운영 컴퓨터에서 백엔드를 계속 켜둘 실행 방식 선택
+- 휴대폰 실기기 테스트 시 LAN IP 또는 터널 주소로 API 주소 조정
+- 푸시 알림을 실제 기기에서 쓰려면 VAPID 키 설정 필요
+- OCR 품질은 실제 천안캠퍼스 게시물 이미지 양식이 바뀔 때마다 재점검 필요
+
+## 실행 요약
+
+```powershell
 cd backend
-./start.sh
+..\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-서버 주소: http://localhost:8000
-API 문서: http://localhost:8000/docs
-
-### 모바일 앱 실행
-```bash
-cd mobile
-./start.sh
+```powershell
+cd web
+npm run build
 ```
-
-**중요**: `mobile/src/api/menuAPI.ts`에서 `API_BASE_URL`을 자신의 로컬 IP로 변경하세요!
-
-## 🔧 커스터마이징 필요 사항
-
-### 1. API 서버 주소 설정 (필수)
-`mobile/src/api/menuAPI.ts`:
-```typescript
-const API_BASE_URL = 'http://YOUR_LOCAL_IP:8000';
-```
-
-### 2. 데이터베이스 변경 (선택사항)
-현재는 인메모리 DB 사용. 프로덕션에서는 SQLite나 PostgreSQL 권장.
-
-## ⚠️ 알려진 제한사항
-
-1. **데이터베이스**: 인메모리 DB 사용. 서버 재시작 시 데이터 손실
-2. **알림**: 실제 기기에서만 테스트 가능
-3. **이미지**: 앱 아이콘/스플래시 이미지 추가 필요
-
-## 📈 다음 단계 (권장)
-
-1. [ ] SQLite 데이터베이스로 전환
-2. [ ] 앱 아이콘 및 스플래시 이미지 추가
-3. [ ] 사용자 리뷰/평점 기능
-4. [ ] 좋아하는 메뉴 저장 기능
-5. [ ] 다크 모드 지원
-6. [ ] 테스트 코드 작성
-7. [ ] 배포 준비 (Docker, CI/CD)
-
-## 🐛 문제 해결
-
-자세한 문제 해결 방법은 [TESTING.md](TESTING.md)를 참조하세요.
-
-## 📝 변경 로그
-
-### 2026-02-10
-- ✅ 초기 프로젝트 생성
-- ✅ 백엔드 API 서버 구현
-- ✅ React Native 모바일 앱 구현
-- ✅ 알림 기능 추가
-- ✅ 모든 에러 수정 완료
-- ✅ 문서 작성 완료
-
-## 📄 라이선스
-
-MIT License - 자유롭게 사용, 수정, 배포 가능합니다.

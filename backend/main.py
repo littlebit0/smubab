@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -7,6 +7,7 @@ import logging
 import os
 import json
 import time
+import re
 
 from dotenv import load_dotenv
 from pywebpush import webpush, WebPushException
@@ -50,6 +51,14 @@ def get_allowed_origins() -> list[str]:
     return [origin.strip() for origin in origins.split(",") if origin.strip()]
 
 
+def is_allowed_origin(origin: str) -> bool:
+    if origin in get_allowed_origins():
+        return True
+
+    origin_regex = os.getenv("CORS_ALLOWED_ORIGIN_REGEX", r"https://.*\.netlify\.app")
+    return bool(origin_regex and re.fullmatch(origin_regex, origin))
+
+
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
@@ -59,6 +68,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_private_network_access_header(request: Request, call_next):
+    if (
+        request.method == "OPTIONS"
+        and request.headers.get("access-control-request-private-network") == "true"
+    ):
+        origin = request.headers.get("origin", "")
+        request_method = request.headers.get("access-control-request-method", "")
+        if origin and request_method and is_allowed_origin(origin):
+            request_headers = request.headers.get("access-control-request-headers", "*")
+            response = Response(status_code=200)
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"
+            response.headers["Access-Control-Allow-Headers"] = request_headers or "*"
+            response.headers["Access-Control-Allow-Private-Network"] = "true"
+            response.headers["Access-Control-Max-Age"] = "600"
+            response.headers["Vary"] = "Origin"
+            return response
+
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
 
 crawler = SMUCafeteriaCrawler()
 _update_lock = threading.Lock()
@@ -482,4 +516,4 @@ async def send_test_push():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

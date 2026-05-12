@@ -41,7 +41,7 @@
       ]
     ],
     "extra": {
-      "apiBaseUrl": "https://smubab1.onrender.com",
+      "apiBaseUrl": "http://127.0.0.1:8000",
       "eas": {
         "projectId": "dbbc9128-43d1-484b-b479-c7347108da58"
       }

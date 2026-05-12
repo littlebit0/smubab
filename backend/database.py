@@ -15,35 +15,21 @@ from models import MealType, Menu, MenuItem, Restaurant
 class MenuDatabase:
     """Persistent menu cache and web push subscription store.
 
-    Uses PostgreSQL when DATABASE_URL starts with postgres/postgresql, otherwise
-    falls back to a local SQLite file. This avoids ORM compatibility issues in
-    local Python 3.14 while keeping Render PostgreSQL support.
+    Uses a local SQLite file so the backend can run entirely on this computer.
     """
 
-    def __init__(self, database_url: Optional[str] = None):
-        self.database_url = database_url or os.getenv("DATABASE_URL", "")
-        self.is_postgres = self.database_url.startswith(("postgres://", "postgresql://"))
+    def __init__(self, database_path: Optional[str] = None):
         self._lock = threading.RLock()
-
-        if self.is_postgres:
-            import psycopg
-            from psycopg.rows import dict_row
-
-            self._connection = psycopg.connect(
-                self.database_url,
-                autocommit=False,
-                row_factory=dict_row,
-            )
-        else:
-            db_path = Path(
-                os.getenv("MENU_DB_PATH", str(Path(__file__).with_name("smubab.db")))
-            )
-            db_path.parent.mkdir(parents=True, exist_ok=True)
-            self._connection = sqlite3.connect(
-                db_path.expanduser().resolve(),
-                check_same_thread=False,
-            )
-            self._connection.row_factory = sqlite3.Row
+        db_path = Path(
+            database_path
+            or os.getenv("MENU_DB_PATH", str(Path(__file__).with_name("smubab.db")))
+        )
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._connection = sqlite3.connect(
+            db_path.expanduser().resolve(),
+            check_same_thread=False,
+        )
+        self._connection.row_factory = sqlite3.Row
 
         self._initialize()
 
@@ -295,8 +281,6 @@ class MenuDatabase:
         return [json.loads(row["subscription_json"]) for row in rows]
 
     def _sql(self, query: str) -> str:
-        if self.is_postgres:
-            return query.replace("?", "%s")
         return query
 
     @staticmethod

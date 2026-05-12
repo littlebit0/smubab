@@ -18,6 +18,6 @@ For an Android emulator, use:
 ## Release examples
 
 ```powershell
-..\.tools\flutter\bin\flutter.bat build appbundle --release --dart-define=API_BASE_URL=https://YOUR_BACKEND_URL
-..\.tools\flutter\bin\flutter.bat build ipa --release --dart-define=API_BASE_URL=https://YOUR_BACKEND_URL
+..\.tools\flutter\bin\flutter.bat build appbundle --release --dart-define=API_BASE_URL=http://127.0.0.1:8000
+..\.tools\flutter\bin\flutter.bat build ipa --release --dart-define=API_BASE_URL=http://127.0.0.1:8000
 ```

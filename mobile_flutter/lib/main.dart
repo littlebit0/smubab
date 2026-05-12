@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const apiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'https://smubab1.onrender.com',
+  defaultValue: 'http://127.0.0.1:8000',
 );
 
 const mealTypeNames = {
