@@ -63,6 +63,7 @@ app.add_middleware(
 crawler = SMUCafeteriaCrawler()
 _update_lock = threading.Lock()
 _is_updating = False
+_last_update_started_at = 0.0
 _scheduler_started = False
 _scheduler_stop_event = threading.Event()
 
@@ -165,12 +166,28 @@ def update_menus(target_date: Optional[date] = None, notify: bool = False):
         send_menu_update_notification(target_date, saved_count)
 
 
-def trigger_update_menus(target_date: Optional[date] = None, notify: bool = False) -> bool:
-    global _is_updating
+def trigger_update_menus(
+    target_date: Optional[date] = None,
+    notify: bool = False,
+    force: bool = False,
+) -> bool:
+    global _is_updating, _last_update_started_at
     with _update_lock:
         if _is_updating:
             return False
+
+        min_interval_seconds = int(os.getenv("MENU_REFRESH_MIN_INTERVAL_SECONDS", "1800"))
+        now = time.time()
+        if (
+            not force
+            and min_interval_seconds > 0
+            and _last_update_started_at
+            and now - _last_update_started_at < min_interval_seconds
+        ):
+            return False
+
         _is_updating = True
+        _last_update_started_at = now
 
     def _task():
         global _is_updating
@@ -227,7 +244,7 @@ def start_menu_update_scheduler():
 async def startup_event():
     """서버 시작 시 실행"""
     logger.info("Starting SMU-Bab API server...")
-    trigger_update_menus(date.today(), notify=False)
+    trigger_update_menus(date.today(), notify=False, force=True)
     start_menu_update_scheduler()
     logger.info("Server started successfully")
 
@@ -265,7 +282,7 @@ async def get_today_menus():
     menus = db.get_daily_menus(today)
 
     if not menus:
-        trigger_update_menus(today, notify=True)
+        trigger_update_menus(today, notify=True, force=True)
         return DailyMenuResponse(
             success=False,
             date=today,
@@ -287,7 +304,7 @@ async def get_menus_by_date(target_date: date):
     menus = db.get_daily_menus(target_date)
 
     if not menus:
-        trigger_update_menus(target_date, notify=True)
+        trigger_update_menus(target_date, notify=True, force=True)
         return DailyMenuResponse(
             success=False,
             date=target_date,
@@ -318,7 +335,7 @@ async def get_weekly_menus(
     menus = db.get_weekly_menus(monday, friday)
 
     if not menus:
-        trigger_update_menus(target_date, notify=True)
+        trigger_update_menus(target_date, notify=True, force=True)
         return MenuResponse(
             success=False,
             data=[],
