@@ -376,7 +376,6 @@ async def get_restaurants():
 async def refresh_menus():
     """메뉴 정보를 강제로 갱신합니다."""
     try:
-        db.clear_menus()
         update_menus(date.today(), notify=True)
         return {
             "success": True,
@@ -384,6 +383,17 @@ async def refresh_menus():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"메뉴 갱신 실패: {str(e)}")
+
+
+@app.post("/api/menus/refresh-async")
+async def refresh_menus_async():
+    """메뉴 갱신을 백그라운드로 예약합니다."""
+    started = trigger_update_menus(date.today(), notify=True)
+    return {
+        "success": True,
+        "started": started,
+        "message": "메뉴 갱신이 예약되었습니다" if started else "메뉴 갱신이 이미 진행 중입니다",
+    }
 
 
 @app.get("/api/push/public-key")
